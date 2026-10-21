@@ -1,1 +1,2402 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
 
+  <!-- Google AdSense -->
+  <meta name="google-adsense-account" content="ca-pub-7963880628277539">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7963880628277539" crossorigin="anonymous"></script>
+
+
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-PGR4Y0TVNP"></script>
+  <script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-PGR4Y0TVNP');
+  </script>
+  
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>World Map</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3-array@3.2.4/dist/d3-array.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3-geo@3.1.0/dist/d3-geo.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.5/dist/mindar-image.prod.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #060911;
+      color: #f8fafc;
+      overflow: hidden;
+      user-select: none;
+    }
+    .font-mono-tech { font-family: 'JetBrains Mono', monospace; }
+
+    /* Simulated Physical Room Wall + Printed World Map Poster */
+    .wall-surface {
+      background:
+        radial-gradient(circle at 50% 25%, rgba(255, 248, 231, 0.12) 0%, rgba(15, 23, 42, 0.65) 65%, rgba(2, 6, 23, 0.95) 100%),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 2px, transparent 2px, transparent 14px),
+        linear-gradient(180deg, #1e2430 0%, #121722 100%);
+    }
+
+    /* Pulsing animations for AR conflict zones */
+    @keyframes pulseGlowRed {
+      0%, 100% { fill-opacity: var(--fill-alpha, 0.58); filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.85)); }
+      50% { fill-opacity: calc(var(--fill-alpha, 0.58) + 0.22); filter: drop-shadow(0 0 14px rgba(239, 68, 68, 1)); }
+    }
+    @keyframes pulseGlowOrange {
+      0%, 100% { fill-opacity: var(--fill-alpha, 0.52); filter: drop-shadow(0 0 5px rgba(249, 115, 22, 0.8)); }
+      50% { fill-opacity: calc(var(--fill-alpha, 0.52) + 0.2); filter: drop-shadow(0 0 12px rgba(249, 115, 22, 0.95)); }
+    }
+    @keyframes pulseGlowAmber {
+      0%, 100% { fill-opacity: var(--fill-alpha, 0.48); filter: drop-shadow(0 0 4px rgba(234, 179, 8, 0.75)); }
+      50% { fill-opacity: calc(var(--fill-alpha, 0.48) + 0.2); filter: drop-shadow(0 0 10px rgba(234, 179, 8, 0.95)); }
+    }
+    @keyframes radarRing {
+      0% { r: 5px; opacity: 0.95; stroke-width: 2.2px; }
+      100% { r: 22px; opacity: 0; stroke-width: 0.5px; }
+    }
+    @keyframes scanlineMove {
+      0% { transform: translateY(-100%); }
+      100% { transform: translateY(1000%); }
+    }
+
+    .conflict-country-critical {
+      fill: #ef4444;
+      stroke: #fecaca;
+      stroke-width: 1.2px;
+      animation: pulseGlowRed 2.4s infinite ease-in-out;
+      cursor: pointer;
+      transition: transform 0.15s ease, stroke-width 0.15s ease;
+    }
+    .conflict-country-high {
+      fill: #f97316;
+      stroke: #fed7aa;
+      stroke-width: 1.1px;
+      animation: pulseGlowOrange 2.8s infinite ease-in-out;
+      cursor: pointer;
+      transition: transform 0.15s ease, stroke-width 0.15s ease;
+    }
+    .conflict-country-elevated {
+      fill: #eab308;
+      stroke: #fef08a;
+      stroke-width: 1px;
+      animation: pulseGlowAmber 3.2s infinite ease-in-out;
+      cursor: pointer;
+      transition: transform 0.15s ease, stroke-width 0.15s ease;
+    }
+    .conflict-country-critical:hover,
+    .conflict-country-high:hover,
+    .conflict-country-elevated:hover,
+    .conflict-selected {
+      stroke: #ffffff !important;
+      stroke-width: 2.5px !important;
+      fill-opacity: 0.9 !important;
+    }
+
+    .radar-pulse {
+      animation: radarRing 2.1s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+      pointer-events: none;
+    }
+
+    .ar-scanline {
+      height: 12%;
+      background: linear-gradient(180deg, transparent 0%, rgba(56, 189, 248, 0.08) 50%, rgba(56, 189, 248, 0.22) 98%, transparent 100%);
+      animation: scanlineMove 7s linear infinite;
+      pointer-events: none;
+    }
+
+    /* Corner calibration handles */
+    .corner-handle {
+      width: 38px;
+      height: 38px;
+      margin-left: -19px;
+      margin-top: -19px;
+      touch-action: none;
+      cursor: grab;
+      transition: transform 0.1s ease;
+    }
+    .corner-handle:active {
+      cursor: grabbing;
+      transform: scale(1.2);
+    }
+
+    /* Custom scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); }
+    ::-webkit-scrollbar-thumb { background: rgba(100, 116, 139, 0.5); border-radius: 9999px; }
+  </style>
+</head>
+<body class="h-screen w-screen flex flex-col select-none overflow-hidden">
+
+  <!-- TOP AR HUD BAR -->
+  <header class="relative z-30 flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-slate-950/85 backdrop-blur-md border-b border-slate-800/80">
+    <div class="flex items-center gap-2.5">
+      <div class="relative flex items-center justify-center w-9 h-9 rounded-lg bg-red-500/15 border border-red-500/40 text-red-400">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span class="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+        </span>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-sm sm:text-base font-bold tracking-tight text-white">World Map</h1>
+          <span id="arStatusBadge" class="px-2 py-0.5 text-[10px] font-mono-tech uppercase tracking-wider rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+            Simulated Wall Mode
+          </span>
+        </div>
+        <p class="text-[11px] text-slate-400 hidden sm:block">
+          Point camera at your wall map, align the 4 corners, and tap any glowing conflict country
+        </p>
+      </div>
+    </div>
+
+    <!-- Primary AR Action Controls -->
+    <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+      <button id="btnToggleCamera" type="button" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/30 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+        <span id="btnCameraLabel">Start Camera AR</span>
+      </button>
+
+      <button id="btnOpenMindAR" type="button" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-900/30 border border-violet-400/40 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+        </svg>
+        <span id="btnMindarLabel">MindAR Track</span>
+      </button>
+
+      <button id="btnFlipCamera" type="button" class="hidden items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition" title="Switch Front/Rear Camera">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+        <span class="hidden md:inline">Flip Cam</span>
+      </button>
+
+      <button id="btnToggleCalibrate" type="button" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+        </svg>
+        <span id="calibrateBtnText">Hide 4 Corners</span>
+      </button>
+
+      <button id="btnAutoAlign" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition" title="Reset 4 corners to wall map frame">
+        Reset Frame
+      </button>
+
+      <button id="btnOpenSettings" type="button" class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+        <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+        </svg>
+        <span class="hidden sm:inline">AR Controls</span>
+      </button>
+
+      <button id="btnToggleDrawer" type="button" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 transition">
+        <span>Hotspots</span>
+        <span id="activeCountBadge" class="px-1.5 py-0.2 rounded bg-red-500 text-white text-[10px] font-mono-tech">18</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- SUB-BAR: FILTER PILLS & PROJECTION INDICATOR -->
+  <div class="relative z-20 flex items-center justify-between gap-2 px-3 py-1.5 bg-slate-900/80 backdrop-blur border-b border-slate-800/60 overflow-x-auto">
+    <div class="flex items-center gap-1.5 shrink-0">
+      <span class="text-[11px] font-mono-tech uppercase text-slate-400 mr-1">Filter:</span>
+      <button type="button" data-filter="all" class="filter-pill px-2.5 py-1 rounded-full text-xs font-medium bg-red-500 text-white transition">
+        All Active (18)
+      </button>
+      <button type="button" data-filter="critical" class="filter-pill px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700 transition flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-red-500"></span>Major Wars (6)
+      </button>
+      <button type="button" data-filter="high" class="filter-pill px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700 transition flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-orange-500"></span>Civil &amp; Regional (7)
+      </button>
+      <button type="button" data-filter="elevated" class="filter-pill px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700 transition flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-amber-400"></span>Insurgency &amp; Escalation (5)
+      </button>
+    </div>
+
+    <div class="hidden lg:flex items-center gap-3 text-[11px] text-slate-400 shrink-0 font-mono-tech">
+      <span>PROJECTION: <strong id="hudProjectionLabel" class="text-sky-400">ROBINSON WALL MAP</strong></span>
+      <span>•</span>
+      <span>PINS: <strong id="hudLockState" class="text-emerald-400">UNLOCKED (DRAG CORNERS)</strong></span>
+    </div>
+  </div>
+
+  <!-- MAIN AR VIEWPORT -->
+  <main id="arViewport" class="relative flex-1 w-full h-full overflow-hidden wall-surface">
+
+    <!-- 1. LIVE WEBCAM VIDEO LAYER (Hidden until Camera AR is started) -->
+    <video id="cameraVideo" autoplay playsinline muted class="hidden absolute inset-0 w-full h-full object-cover z-0"></video>
+
+    <!-- 2. SIMULATED PHYSICAL WALL POSTER (Visible in Demo Mode so user can test immediately) -->
+    <div id="simulatedPosterContainer" class="absolute inset-0 pointer-events-none z-0 flex items-center justify-center">
+      <!-- Realistic poster shadow and paper frame rendered behind the calibrated coordinates -->
+      <div id="posterVisualHint" class="absolute bottom-3 left-3 z-20 bg-slate-950/80 backdrop-blur-md border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 max-w-xs sm:max-w-md pointer-events-auto">
+        <div class="flex items-center justify-between gap-2 mb-0.5">
+          <span class="font-semibold text-sky-400 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span>
+            Interactive AR Wall Map Ready
+          </span>
+          <button id="btnDismissHint" type="button" class="text-slate-400 hover:text-white text-xs px-1">✕</button>
+        </div>
+        <p class="text-[11px] text-slate-400 leading-relaxed">
+          Tap any <span class="text-red-400 font-medium">glowing country</span> or <span class="text-orange-300 font-medium">pulsing target beacon</span> to inspect live 2026 conflict intelligence. Drag the <span class="text-sky-300 font-mono-tech">TL / TR / BR / BL</span> corner pins to warp the overlay onto your physical wall map.
+        </p>
+      </div>
+    </div>
+
+    <!-- 3. 3D PERSPECTIVE-WARPED AR OVERLAY LAYER (1000 x 520 canonical coordinate space) -->
+    <div id="homographyStage" class=" absolute top-0 left-0 origin-top-left z-10" style="width: 1000px; height: 520px; will-change: transform;">
+      
+      <!-- Simulated physical paper map background (only shown in Simulated Wall Mode, hidden in Live Camera AR mode) -->
+      <div id="simulatedPaperBg" class="absolute inset-0 rounded-sm shadow-2xl border-4 border-amber-100/80 bg-[#e8dfc8] transition-opacity duration-300" style="box-shadow: 0 25px 60px rgba(0,0,0,0.75), inset 0 0 40px rgba(139, 115, 85, 0.28);">
+        <!-- Subtle vintage wall map graticule lines -->
+        <div class="absolute inset-2 border border-amber-900/25 pointer-events-none"></div>
+        <div class="absolute top-2.5 left-4 text-[10px] font-mono-tech tracking-widest uppercase text-amber-950/50 font-bold pointer-events-none">
+          PHYSICAL WALL MAP TARGET • STANDARD WORLD PROJECTION
+        </div>
+      </div>
+
+      <!-- AR HUD Scanline Effect inside the tracked map boundary -->
+      <div class="ar-scanline absolute inset-x-0 top-0 w-full z-10"></div>
+
+      <!-- THE INTERACTIVE WORLD MAP + CONFLICT HIGHLIGHT SVG -->
+      <svg id="arMapSvg" viewBox="0 0 1000 520" class="relative z-20 w-full h-full overflow-visible">
+        <defs>
+          <radialGradient id="oceanGlow" cx="50%" cy="50%" r="60%">
+            <stop offset="0%" stop-color="#0ea5e9" stop-opacity="0.10" />
+            <stop offset="100%" stop-color="#0284c7" stop-opacity="0.02" />
+          </radialGradient>
+          <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="2.5" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        <!-- Subtle AR Grid / Graticule Layer -->
+        <g id="graticuleLayer" opacity="0.32"></g>
+
+        <!-- Base World Countries Alignment Layer (Ghost Wireframe in Camera Mode, Tinted Continents in Simulated Mode) -->
+        <g id="baseWorldLayer"></g>
+
+        <!-- Active Conflict Country Polygons Layer -->
+        <g id="conflictPolygonsLayer"></g>
+
+        <!-- Interactive AR Target Pins & Labels Layer -->
+        <g id="conflictPinsLayer"></g>
+      </svg>
+
+      <!-- AR Frame Border Reticle -->
+      <div id="arBoundaryFrame" class="absolute inset-0 border-2 border-sky-400/50 pointer-events-none rounded-sm" style="box-shadow: 0 0 20px rgba(56, 189, 248, 0.25), inset 0 0 20px rgba(56, 189, 248, 0.12);">
+        <div class="absolute -top-5 right-0 text-[10px] font-mono-tech text-sky-400 bg-slate-950/80 px-2 py-0.5 rounded border border-sky-500/30">
+          AR TRACKING LOCK • 18 ACTIVE CONFLICT ZONES
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. DRAGGABLE 4-CORNER CALIBRATION HANDLES (Screen-Space Overlay) -->
+    <div id="cornersLayer" class="absolute inset-0 pointer-events-none z-20">
+      <div id="handleTL" data-corner="0" class="corner-handle absolute pointer-events-auto flex items-center justify-center rounded-full bg-slate-950/90 border-2 border-sky-400 text-sky-300 shadow-lg shadow-sky-500/30" title="Drag Top-Left corner to match your wall map">
+        <span class="text-[10px] font-mono-tech font-bold">TL</span>
+      </div>
+      <div id="handleTR" data-corner="1" class="corner-handle absolute pointer-events-auto flex items-center justify-center rounded-full bg-slate-950/90 border-2 border-sky-400 text-sky-300 shadow-lg shadow-sky-500/30" title="Drag Top-Right corner to match your wall map">
+        <span class="text-[10px] font-mono-tech font-bold">TR</span>
+      </div>
+      <div id="handleBR" data-corner="2" class="corner-handle absolute pointer-events-auto flex items-center justify-center rounded-full bg-slate-950/90 border-2 border-sky-400 text-sky-300 shadow-lg shadow-sky-500/30" title="Drag Bottom-Right corner to match your wall map">
+        <span class="text-[10px] font-mono-tech font-bold">BR</span>
+      </div>
+      <div id="handleBL" data-corner="3" class="corner-handle absolute pointer-events-auto flex items-center justify-center rounded-full bg-slate-950/90 border-2 border-sky-400 text-sky-300 shadow-lg shadow-sky-500/30" title="Drag Bottom-Left corner to match your wall map">
+        <span class="text-[10px] font-mono-tech font-bold">BL</span>
+      </div>
+    </div>
+
+    <!-- 5. FLOATING AR CALIBRATION & ALIGNMENT SETTINGS PANEL -->
+    <aside id="settingsPanel" class="hidden absolute top-3 right-3 z-30 w-80 max-w-[calc(100vw-1.5rem)] bg-slate-950/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl p-4 shadow-2xl">
+      <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-800">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
+          <h2 class="text-sm font-bold text-white">Wall Map AR Calibration</h2>
+        </div>
+        <button id="btnCloseSettings" type="button" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800">✕</button>
+      </div>
+
+      <div class="space-y-3.5 text-xs">
+        <!-- Map Projection Selector -->
+        <div>
+          <label class="block text-slate-300 font-medium mb-1">Wall Map Projection Type</label>
+          <div class="grid grid-cols-2 gap-1.5">
+            <button type="button" id="projRobinson" class="px-2.5 py-1.5 rounded-lg font-medium bg-sky-500/20 text-sky-300 border border-sky-500/50 transition">
+              Robinson / Poster
+            </button>
+            <button type="button" id="projEquirect" class="px-2.5 py-1.5 rounded-lg font-medium bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-800 transition">
+              Mercator / Flat
+            </button>
+          </div>
+        </div>
+
+        <!-- Ghost Continents Alignment Opacity -->
+        <div>
+          <div class="flex justify-between text-slate-300 mb-1">
+            <span>Continent Alignment Wireframe</span>
+            <span id="valGhostOpacity" class="font-mono-tech text-sky-400">45%</span>
+          </div>
+          <input id="sliderGhostOpacity" type="range" min="0" max="100" value="45" class="w-full accent-sky-400 cursor-pointer" />
+          <p class="text-[11px] text-slate-400 mt-0.5">
+            Use wireframe to line up continents with your wall map, then slide to 0% for pure AR highlights.
+          </p>
+        </div>
+
+        <!-- Conflict Highlight Intensity -->
+        <div>
+          <div class="flex justify-between text-slate-300 mb-1">
+            <span>Conflict Glow Opacity</span>
+            <span id="valFillOpacity" class="font-mono-tech text-red-400">60%</span>
+          </div>
+          <input id="sliderFillOpacity" type="range" min="20" max="95" value="60" class="w-full accent-red-500 cursor-pointer" />
+        </div>
+
+        <!-- Lock Corner Pins & Audio Effects -->
+        <div class="flex items-center justify-between pt-1 border-t border-slate-800">
+          <span class="text-slate-300 font-medium">Lock 4-Corner Calibration</span>
+          <button id="btnLockCorners" type="button" class="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition">
+            Unlocked
+          </button>
+        </div>
+
+        <div class="flex items-center justify-between pt-1 border-t border-slate-800">
+          <span class="text-slate-300 font-medium">AR Tactical Sound &amp; Voice</span>
+          <button id="btnToggleSound" type="button" class="px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 transition">
+            Sound ON
+          </button>
+        </div>
+
+        <!-- Perspective Tilt Preset Buttons -->
+        <div class="pt-2 border-t border-slate-800">
+          <span class="block text-slate-400 text-[11px] mb-1.5">Test Wall Perspective Presets:</span>
+          <div class="grid grid-cols-3 gap-1.5">
+            <button type="button" id="presetFlat" class="px-2 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-[11px]">
+              Flat Front
+            </button>
+            <button type="button" id="presetAngledLeft" class="px-2 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-[11px]">
+              Angled Left
+            </button>
+            <button type="button" id="presetLookingUp" class="px-2 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-[11px]">
+              Looking Up
+            </button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 6. SLIDE-OUT CONFLICT DIRECTORY DRAWER -->
+    <aside id="hotspotDrawer" class="hidden absolute top-0 right-0 bottom-0 z-30 w-80 sm:w-96 max-w-full bg-slate-950/95 backdrop-blur-xl border-l border-slate-800 flex flex-col shadow-2xl">
+      <div class="p-3.5 border-b border-slate-800 flex items-center justify-between">
+        <div>
+          <h2 class="text-sm font-bold text-white">Active Conflict Countries (2026)</h2>
+          <p class="text-[11px] text-slate-400">Tap any country to highlight &amp; open briefing modal</p>
+        </div>
+        <button id="btnCloseDrawer" type="button" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">✕</button>
+      </div>
+
+      <div class="p-2.5 border-b border-slate-800">
+        <input id="searchCountryInput" type="text" placeholder="Search country, region, or conflict..." class="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500" />
+      </div>
+
+      <div id="drawerCountryList" class="flex-1 overflow-y-auto p-2.5 space-y-2"></div>
+    </aside>
+
+    <!-- 6B. MINDAR SCANNING RETICLE OVERLAY (Shown while MindAR is searching for the wall map target) -->
+    <div id="mindarScanningOverlay" class="hidden absolute inset-0 pointer-events-none z-20 flex flex-col items-center justify-center">
+      <div class="relative w-72 h-44 sm:w-96 sm:h-56 border-2 border-dashed border-violet-400/80 rounded-2xl flex flex-col items-center justify-center bg-slate-950/35 backdrop-blur-[2px] shadow-2xl">
+        <div class="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-violet-400 rounded-tl-lg"></div>
+        <div class="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-violet-400 rounded-tr-lg"></div>
+        <div class="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-violet-400 rounded-bl-lg"></div>
+        <div class="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-violet-400 rounded-br-lg"></div>
+        <div class="w-10 h-10 rounded-full border-2 border-violet-400 border-t-transparent animate-spin mb-2"></div>
+        <p class="text-xs font-mono-tech uppercase tracking-wider text-violet-200 font-bold">
+          MindAR Scanning for Wall Map...
+        </p>
+        <p id="mindarScanSubtext" class="text-[11px] text-slate-300 mt-1 px-4 text-center">
+          Point camera at your compiled world map target
+        </p>
+      </div>
+    </div>
+
+    <!-- 6C. MINDAR IMAGE TRACKING & TARGET COMPILER STUDIO PANEL -->
+    <div id="mindarStudioModal" class="hidden fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
+      <div class="w-full max-w-xl max-h-[90vh] flex flex-col rounded-2xl bg-slate-900 border border-violet-500/40 shadow-2xl overflow-hidden">
+        <div class="h-1.5 w-full bg-gradient-to-r from-violet-500 via-fuchsia-500 to-sky-400"></div>
+
+        <div class="flex items-center justify-between px-4 py-3.5 border-b border-slate-800">
+          <div class="flex items-center gap-2.5">
+            <span class="w-3 h-3 rounded-full bg-violet-400 animate-pulse"></span>
+            <div>
+              <h2 class="text-sm sm:text-base font-bold text-white">MindAR Image Tracking Studio</h2>
+              <p class="text-[11px] text-slate-400">Compile your wall map photo into a <code class="text-violet-300">.mind</code> target or start hands-free 6-DoF tracking</p>
+            </div>
+          </div>
+          <button id="btnCloseMindarStudio" type="button" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">✕</button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+          <!-- Engine Status Row -->
+          <div class="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <span class="text-[10px] font-mono-tech uppercase text-slate-400 block">MindAR Engine &amp; Target Status</span>
+              <span id="mindarEngineStatusText" class="text-xs font-semibold text-emerald-400 font-mono-tech">
+                Ready • MindAR Compiler &amp; Controller Loaded
+              </span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button id="btnMindarStartStop" type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white transition">
+                Start MindAR Tracking
+              </button>
+              <button id="btnMindarSimSweep" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 transition" title="Simulate 6-DoF camera movement over the wall map">
+                Demo 6-DoF Sweep
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 1: Choose or Compile Wall Map Target -->
+          <div class="space-y-2">
+            <h3 class="text-xs font-mono-tech uppercase tracking-wider text-violet-300 font-semibold">
+              1. Build or Load Your Wall Map <code class="text-sky-300">.mind</code> Target
+            </h3>
+            <p class="text-[11px] text-slate-400 leading-relaxed">
+              MindAR tracks natural feature points (coastlines, labels, grid intersections) on your specific wall map. Choose how to provide your target:
+            </p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+              <button id="btnMindarCompileDefault" type="button" class="p-3 rounded-xl bg-violet-500/15 hover:bg-violet-500/25 border border-violet-500/40 text-left transition flex flex-col justify-between">
+                <div class="font-bold text-violet-200 mb-1">⚡ Compile Standard Map</div>
+                <p class="text-[11px] text-slate-300 leading-snug">Compile the built-in world map in-browser and start tracking immediately.</p>
+              </button>
+
+              <button id="btnMindarSnapCamera" type="button" class="p-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-left transition flex flex-col justify-between">
+                <div class="font-bold text-emerald-200 mb-1">📸 Snap Wall Map Photo</div>
+                <p class="text-[11px] text-slate-300 leading-snug">Capture your wall map from the live camera feed and compile it on the fly.</p>
+              </button>
+
+              <label for="inputMindarFile" class="p-3 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/40 text-left transition flex flex-col justify-between cursor-pointer">
+                <div class="font-bold text-sky-200 mb-1">📂 Upload Photo / .mind</div>
+                <p class="text-[11px] text-slate-300 leading-snug">Upload a photo of your wall map (PNG/JPG) or a pre-compiled <code class="text-sky-300">.mind</code> file.</p>
+                <input id="inputMindarFile" type="file" accept=".mind,image/*" class="hidden" />
+              </label>
+            </div>
+          </div>
+
+          <!-- Compilation Progress Bar -->
+          <div id="mindarProgressBox" class="hidden p-3 rounded-xl bg-slate-950 border border-violet-500/30 space-y-1.5">
+            <div class="flex items-center justify-between text-[11px] font-mono-tech">
+              <span id="mindarProgressLabel" class="text-violet-300">Compiling multi-scale feature pyramid...</span>
+              <span id="mindarProgressPct" class="text-white font-bold">0%</span>
+            </div>
+            <div class="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+              <div id="mindarProgressBar" class="h-full bg-gradient-to-r from-violet-500 to-sky-400 transition-all duration-150" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <!-- Feature Point Visualizer Canvas -->
+          <div class="p-3 rounded-xl bg-slate-950/90 border border-slate-800 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-mono-tech uppercase text-slate-400">
+                Extracted KPM Feature Points Preview (<span id="mindarFeatureCount" class="text-emerald-400">0</span> keypoints)
+              </span>
+              <button id="btnMindarDownload" type="button" disabled class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-800 text-slate-500 border border-slate-700 transition disabled:opacity-50">
+                Download wallmap.mind
+              </button>
+            </div>
+            <div class="relative w-full h-40 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center overflow-hidden">
+              <canvas id="mindarPreviewCanvas" width="500" height="260" class="max-w-full max-h-full object-contain"></canvas>
+              <div id="mindarPreviewPlaceholder" class="absolute inset-0 flex items-center justify-center text-[11px] text-slate-500 px-4 text-center">
+                Click "Compile Standard Map", "Snap Wall Map Photo", or upload an image to inspect MindAR tracking keypoints.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="px-4 py-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+          <span>6-DoF Pose → 4-Corner Homography Bridge Active</span>
+          <button id="btnDoneMindarStudio" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700">
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. TOAST NOTIFICATION BANNER -->
+    <div id="toastBanner" class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-slate-900/95 border border-sky-500/50 text-xs text-sky-200 shadow-xl backdrop-blur-md"></div>
+  </main>
+
+  <!-- 8. CONFLICT INTELLIGENCE MODAL POPUP (Opens when clicking a highlighted country on the AR wall map) -->
+  <div id="conflictModalBackdrop" class="hidden fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+    <div id="conflictModalCard" class="relative w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl bg-slate-900/95 border border-slate-700/90 shadow-2xl overflow-hidden">
+      
+      <!-- Top Severity Accent Bar -->
+      <div id="modalAccentBar" class="h-1.5 w-full bg-gradient-to-r from-red-500 via-orange-500 to-amber-500"></div>
+
+      <!-- Modal Header -->
+      <div class="flex items-start justify-between gap-3 p-4 sm:p-5 border-b border-slate-800">
+        <div class="flex items-center gap-3">
+          <div id="modalFlagBox" class="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-2xl shrink-0">
+            🇺🇦
+          </div>
+          <div>
+            <div class="flex flex-wrap items-center gap-2">
+              <h2 id="modalCountryName" class="text-lg sm:text-xl font-bold text-white">Ukraine</h2>
+              <span id="modalSeverityBadge" class="px-2.5 py-0.5 rounded-full text-[11px] font-mono-tech font-semibold uppercase bg-red-500/20 text-red-300 border border-red-500/40">
+                Major War
+              </span>
+            </div>
+            <p id="modalConflictTitle" class="text-xs sm:text-sm text-slate-300 font-medium mt-0.5">
+              Russia–Ukraine Full-Scale War
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5">
+          <button id="btnSpeakBriefing" type="button" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 transition" title="Read conflict briefing aloud">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+            </svg>
+            <span id="speakBtnLabel">Audio Brief</span>
+          </button>
+          <button id="btnCloseModal" type="button" class="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition" aria-label="Close modal">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+        
+        <!-- Key Metrics 4-Card Row -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+            <div class="text-[10px] font-mono-tech uppercase text-slate-400">People in Need (2026)</div>
+            <div id="modalMetricNeed" class="text-sm sm:text-base font-bold text-red-400 mt-0.5">10.8 Million</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+            <div class="text-[10px] font-mono-tech uppercase text-slate-400">Conflict Timeline</div>
+            <div id="modalMetricTimeline" class="text-sm sm:text-base font-bold text-white mt-0.5">2014 / Escalated 2022</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+            <div class="text-[10px] font-mono-tech uppercase text-slate-400">Region</div>
+            <div id="modalMetricRegion" class="text-sm sm:text-base font-bold text-sky-300 mt-0.5">Eastern Europe</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+            <div class="text-[10px] font-mono-tech uppercase text-slate-400">2026 Trajectory</div>
+            <div id="modalMetricStatus" class="text-sm sm:text-base font-bold text-amber-300 mt-0.5">High-Intensity Frontline</div>
+          </div>
+        </div>
+
+        <!-- Latest 2026 Conflict Briefing -->
+        <div class="p-4 rounded-xl bg-slate-950/60 border border-slate-800/90 space-y-2">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-mono-tech uppercase tracking-wider text-sky-400 font-semibold">
+              Latest 2026 Situation Briefing
+            </h3>
+            <span class="text-[11px] text-slate-400 font-mono-tech">Updated Oct 2026</span>
+          </div>
+          <p id="modalSummaryText" class="text-xs sm:text-sm text-slate-200 leading-relaxed"></p>
+        </div>
+
+        <!-- Active Hotspots & Key Actors -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/90">
+            <h4 class="text-[11px] font-mono-tech uppercase text-slate-400 mb-1.5">Primary Flashpoints &amp; Frontlines</h4>
+            <p id="modalHotspots" class="text-xs text-slate-200 leading-relaxed"></p>
+          </div>
+          <div class="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/90">
+            <h4 class="text-[11px] font-mono-tech uppercase text-slate-400 mb-1.5">Key Parties &amp; Drivers</h4>
+            <p id="modalActors" class="text-xs text-slate-200 leading-relaxed"></p>
+          </div>
+        </div>
+
+        <!-- Humanitarian Impact Box -->
+        <div class="p-3.5 rounded-xl bg-red-950/20 border border-red-500/30">
+          <h4 class="text-[11px] font-mono-tech uppercase text-red-300 mb-1">Humanitarian &amp; Civilian Impact</h4>
+          <p id="modalHumanitarian" class="text-xs text-slate-200 leading-relaxed"></p>
+        </div>
+
+        <!-- Verified Grounded Source Links -->
+        <div class="pt-1">
+          <div class="text-[11px] font-mono-tech uppercase text-slate-400 mb-2">Verified Intelligence &amp; Humanitarian Trackers</div>
+          <div id="modalSourcesList" class="flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+
+      <!-- Modal Footer: Prev / Next Conflict Navigation -->
+      <div class="flex items-center justify-between px-4 py-3 bg-slate-950/90 border-t border-slate-800">
+        <button id="btnPrevConflict" type="button" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          ← Previous Country
+        </button>
+        <span id="modalCounterText" class="text-xs font-mono-tech text-slate-400">1 / 18</span>
+        <button id="btnNextConflict" type="button" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          Next Country →
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. VERIFIED 2026 GLOBAL CONFLICT DATASET (18 ACTIVE COUNTRIES/TERRITORIES)
+    // =========================================================================
+    const CONFLICT_COUNTRIES = [
+      {
+        id: "UKR",
+        isoNum: "804",
+        name: "Ukraine",
+        flag: "🇺🇦",
+        region: "Eastern Europe",
+        severity: "critical",
+        severityLabel: "Major War",
+        conflictTitle: "Russia–Ukraine Full-Scale Armed Conflict",
+        peopleInNeed: "10.8 Million",
+        timeline: "2014 (Full-scale Feb 2022)",
+        status2026: "Active Eastern & Southern Fronts",
+        lat: 48.8,
+        lon: 31.4,
+        summary: "Four years after the February 2022 full-scale escalation, intense artillery, drone, and missile warfare continues across eastern and southern Ukraine. The greatest structural damage remains concentrated within 100 km of the frontlines, accompanied by ongoing long-range strikes on energy infrastructure.",
+        hotspots: "Donetsk, Luhansk, Kharkiv (including Izium recovery zones), Zaporizhzhia, Kherson, and cross-border regions.",
+        actors: "Armed Forces of Ukraine, Russian Armed Forces, and international military aid coalitions.",
+        humanitarian: "Ukraine faces one of the world's largest displacement crises in 2026, with 10.8 million people requiring humanitarian assistance, winter heating support, and frontline trauma care.",
+        sources: [
+          { label: "CFR: War in Ukraine Tracker", url: "https://www.cfr.org/global-conflict-tracker/conflict/conflict-ukraine" },
+          { label: "Concern Worldwide 2026 Report", url: "https://www.concern.net/news/countries-in-conflict" },
+          { label: "Crisis Group: 10 Conflicts to Watch 2026", url: "https://www.crisisgroup.org/cmt/global/10-conflicts-watch-2026" }
+        ],
+        fallbackPoly: [[22.1,51.5],[24.0,51.9],[28.0,51.6],[31.0,52.1],[34.0,52.3],[38.2,49.9],[40.2,49.3],[39.7,47.2],[36.7,46.6],[35.0,46.0],[33.5,44.4],[31.5,46.3],[29.6,45.4],[28.2,45.5],[26.0,47.9],[22.9,48.0],[22.1,49.0]]
+      },
+      {
+        id: "RUS",
+        isoNum: "643",
+        name: "Russia",
+        flag: "🇷🇺",
+        region: "Eurasia / Eastern Europe",
+        severity: "critical",
+        severityLabel: "Major War Belligerent",
+        conflictTitle: "Russia–Ukraine War & Cross-Border Operations",
+        peopleInNeed: "Cross-Border Displaced",
+        timeline: "2014 – Present",
+        status2026: "Full-Scale Military Mobilization",
+        lat: 55.7,
+        lon: 48.0,
+        summary: "Russia remains an active state belligerent conducting sustained offensive military, missile, and drone operations in Ukraine while experiencing cross-border kinetic strikes, drone raids on refineries and airfields, and contested border security in western oblasts.",
+        hotspots: "Kursk, Belgorod, Bryansk, Rostov border oblasts, and Black Sea naval theater.",
+        actors: "Russian Ministry of Defense, Ukrainian cross-border strike units.",
+        humanitarian: "Hundreds of thousands of civilians evacuated or displaced across western border oblasts alongside severe wartime economic and sanctions pressures.",
+        sources: [
+          { label: "CFR Global Conflict Tracker", url: "https://www.cfr.org/global-conflict-tracker/conflict/conflict-ukraine" },
+          { label: "Crisis Group: 2026 Watchlist", url: "https://www.crisisgroup.org/cmt/global/10-conflicts-watch-2026" }
+        ],
+        fallbackPoly: [[28.0,60.0],[32.0,68.5],[45.0,67.0],[65.0,68.5],[90.0,71.0],[125.0,71.5],[160.0,68.0],[175.0,65.0],[162.0,55.0],[140.0,52.0],[132.0,43.0],[118.0,50.0],[95.0,50.5],[75.0,54.0],[55.0,51.0],[47.0,43.0],[39.0,45.0],[38.0,50.0],[31.0,52.5],[28.0,57.5]]
+      },
+      {
+        id: "SDN",
+        isoNum: "729",
+        name: "Sudan",
+        flag: "🇸🇩",
+        region: "Northeast Africa",
+        severity: "critical",
+        severityLabel: "Major Civil War",
+        conflictTitle: "Sudanese Civil War (SAF vs. RSF)",
+        peopleInNeed: "33.7 Million",
+        timeline: "April 15, 2023 – Present",
+        status2026: "World's Largest Humanitarian Crisis",
+        lat: 15.6,
+        lon: 30.2,
+        summary: "Ignited in April 2023 by clashes between the Sudanese Armed Forces (SAF) and the paramilitary Rapid Support Forces (RSF) in Khartoum, Sudan's civil war remains the largest humanitarian and health emergency on record in 2026, with over half of the population requiring aid.",
+        hotspots: "Khartoum, El Fasher and West/North Darfur, Kordofan, and Gezira state.",
+        actors: "Sudanese Armed Forces (SAF), Rapid Support Forces (RSF), and allied regional militias.",
+        humanitarian: "33.7 million people need humanitarian assistance in 2026—the highest single-country figure in modern humanitarian history—amid widespread famine conditions and mass displacement into Chad and South Sudan.",
+        sources: [
+          { label: "Concern Worldwide: Sudan 2026", url: "https://www.concern.net/news/countries-in-conflict" },
+          { label: "CFR Global Conflict Tracker", url: "https://www.cfr.org/global-conflict-tracker" },
+          { label: "ACLED Conflict Watchlist 2026", url: "https://acleddata.com/series/conflict-watchlist-2026" }
+        ],
+        fallbackPoly: [[22.0,22.0],[31.5,22.0],[36.9,22.0],[38.5,18.0],[36.5,14.0],[35.0,11.5],[33.0,9.8],[28.0,9.5],[24.0,10.0],[22.5,13.5],[24.0,19.5]]
+      },
+      {
+        id: "PSE",
+        isoNum: "275",
+        altIsoNum: "376",
+        name: "Gaza & Israel",
+        flag: "🇵🇸",
+        region: "Middle East / Levant",
+        severity: "critical",
+        severityLabel: "Major Conflict Zone",
+        conflictTitle: "Gaza & Regional Levant Escalation",
+        peopleInNeed: "3.6 Million (Gaza & West Bank)",
+        timeline: " Escalated October 2023 – 2026",
+        status2026: "Fragile Ceasefire / Severe Humanitarian Crisis",
+        lat: 31.45,
+        lon: 34.4,
+        summary: "Following catastrophic hostilities that began in October 2023 and displaced roughly 90% of Gaza's population (~2 million people), the territory faces near-total devastation of housing, food systems, and healthcare infrastructure alongside persistent instability in the West Bank.",
+        hotspots: "Gaza City, Rafah, Al-Nuseirat, Khan Younis, and Northern West Bank.",
+        actors: "Israel Defense Forces (IDF), Hamas, Palestinian armed factions, and regional mediators.",
+        humanitarian: "3.6 million people across Gaza and the West Bank require urgent humanitarian aid, clean water filtration, and medical rehabilitation in 2026.",
+        sources: [
+          { label: "Concern Worldwide: Gaza 2026", url: "https://www.concern.net/news/countries-in-conflict" },
+          { label: "Crisis Group: 10 Conflicts to Watch", url: "https://www.crisisgroup.org/cmt/global/10-conflicts-watch-2026" },
+          { label: "CFR Global Conflict Tracker", url: "https://www.cfr.org/global-conflict-tracker" }
+        ],
+        fallbackPoly: [[34.2,33.3],[35.8,33.3],[35.6,31.5],[34.9,29.5],[34.2,31.2]]
+      },
+      {
+        id: "MMR",
+        isoNum: "104",
+        name: "Myanmar",
+        flag: "🇲🇲",
+        region: "Southeast Asia",
+        severity: "critical",
+        severityLabel: "Major Civil War",
+        conflictTitle: "Myanmar Multi-Front Civil War",
+        peopleInNeed: "18.6+ Million",
+        timeline: "February 2021 – Present",
+        status2026: "Widespread Resistance Offensives",
+        lat: 21.0,
+        lon: 96.0,
+        summary: "Fighting continues across Myanmar in 2026 between the military junta (Tatmadaw), Ethnic Armed Organizations (EAOs), and People's Defense Forces (PDF), with resistance coalitions holding major border towns and trade corridors while the junta relies heavily on airstrikes.",
+        hotspots: "Rakhine State, Shan State, Sagaing, Kachin, Chin, and Kayin border corridors.",
+        actors: "State Administration Council (Military Junta), Three Brotherhood Alliance, National Unity Government (PDFs).",
+        humanitarian: "Millions of internally displaced civilians face severe food insecurity, disrupted medical supply chains, and repeated aerial bombardment.",
+        sources: [
+          { label: "Crisis Group: 10 Conflicts to Watch 2026", url: "https://www.crisisgroup.org/cmt/global/10-conflicts-watch-2026" },
+          { label: "ACLED Conflict Watchlist 2026", url: "https://acleddata.com/series/conflict-watchlist-2026" }
+        ],
+        fallbackPoly: [[92.2,21.0],[94.5,27.0],[97.5,28.2],[98.8,25.5],[101.0,21.5],[99.0,16.0],[98.5,10.5],[96.0,16.0],[94.2,16.0],[92.2,21.0]]
+      },
+      {
+        id: "YEM",
+        isoNum: "887",
+        name: "Yemen",
+        flag: "🇾🇪",
+        region: "Middle East / Arabian Peninsula",
+        severity: "critical",
+        severityLabel: "Major Civil & Regional War",
+        conflictTitle: "Yemeni Civil War & Red Sea Maritime Crisis",
+        peopleInNeed: "22.3 Million",
+        timeline: "2014 – Present",
+        status2026: "Protracted War & Regional Spillover",
+        lat: 15.5,
+        lon: 47.5,
+        summary: "Twelve years after civil war erupted in 2014, Yemen remains split between Houthi-controlled northern highlands and the internationally recognized government in the south, compounded by Red Sea shipping attacks and retaliatory airstrikes.",
+        hotspots: "Marib, Taiz, Hodeidah port corridor, Sanaa, and Bab el-Mandeb / Red Sea coast.",
+        actors: "Ansar Allah (Houthis), Presidential Leadership Council (PLC), Southern Transitional Council (STC), and regional naval coalitions.",
+        humanitarian: "Over 22.3 million Yemenis require humanitarian assistance in 2026 amid collapsed public health infrastructure, water scarcity, and severe malnutrition.",
+        sources: [
+          { label: "Concern Worldwide: Yemen 2026", url: "https://www.concern.net/news/countries-in-conflict" },
+          { label: "CFR: Conflict in Yemen", url: "https://www.cfr.org/reports/conflicts-watch-2026" }
+        ],
+        fallbackPoly: [[43.2,12.6],[43.0,16.5],[47.0,17.2],[52.0,19.0],[53.1,16.6],[48.0,14.0],[45.0,12.7]]
+      },
+      {
+        id: "COD",
+        isoNum: "180",
+        name: "DR Congo",
+        flag: "🇨🇩",
+        region: "Central Africa",
+        severity: "high",
+        severityLabel: "High-Intensity Regional War",
+        conflictTitle: "Eastern DRC Armed Conflict (M23 & ADF)",
+        peopleInNeed: "14.9 Million",
+        timeline: "1996 – Present (2025–2026 Escalation)",
+        status2026: "Severe Eastern Escalation + Health Crisis",
+        lat: -2.8,
+        lon: 23.6,
+        summary: "Fighting in the eastern Democratic Republic of the Congo escalated sharply across 2025 and 2026 in North Kivu, South Kivu, and Ituri provinces, alongside a growing Ebola outbreak originating in Ituri since May 2026 that active combat has made harder to contain.",
+        hotspots: "Goma surroundings, North Kivu, South Kivu, and Ituri province.",
+        actors: "FARDC (Congolese Army), M23 rebels, Allied Democratic Forces (ADF), CODECO, and regional forces.",
+        humanitarian: "14.9 million people require humanitarian assistance in 2026, with millions living in overcrowded volcanic-rock IDP camps around Goma and eastern towns.",
+        sources: [
+          { label: "Concern Worldwide: DR Congo 2026", url: "https://www.concern.net/news/countries-in-conflict" },
+          { label: "ACLED Conflict Index", url: "https://acleddata.com/series/acled-conflict-index" }
+        ],
+        fallbackPoly: [[12.2,-5.8],[18.5,4.5],[27.5,5.0],[31.2,2.2],[29.2,-4.5],[29.5,-8.5],[28.5,-13.0],[22.0,-11.5],[16.0,-6.0]]
+      },
+      {
+        id: "SYR",
+        isoNum: "760",
+        name: "Syria",
+        flag: "🇸🇾",
+        region: "Middle East / Levant",
+        severity: "high",
+        severityLabel: "Regional Conflict & Instability",
+        conflictTitle: "Post-2024 Transition Violence & Regional Clashes",
+        peopleInNeed: "15.6 Million",
+        timeline: "2011 – Present",
+        status2026: "Sporadic Armed Clashes & Mass Displacement",
+        lat: 35.0,
+        lon: 38.5,
+        summary: "Following major political shifts at the end of 2024 that ended the 13-year configuration of the Syrian civil war, sporadic armed clashes, cross-border strikes, and sectarian or factional violence have triggered fresh displacement in 2025 and 2026.",
+        hotspots: "Idlib, Aleppo countryside, Northeast Syria / Euphrates corridor, and southern border areas.",
+        actors: "Transitional security authorities, Syrian Democratic Forces (SDF), Turkish-backed factions, and ISIS remnants.",
+        humanitarian: "90% of Syrians live below the poverty line and 15.6 million people remain in need of humanitarian assistance in 2026.",
+        sources: [
+          { label: "Concern Worldwide: Syria 2026", url: "https://www.concern.net/news/countries-in-conflict" },
+          { label: "CFR Global Conflict Tracker", url: "https://www.cfr.org/global-conflict-tracker" }
+        ],
+        fallbackPoly: [[35.8,33.0],[35.9,36.8],[42.3,37.2],[41.0,34.4],[38.8,33.4],[36.5,32.5]]
+      },
+      {
+        id: "SSD",
+        isoNum: "728",
+        name: "South Sudan",
+        flag: "🇸🇸",
+        region: "East Africa",
+        severity: "high",
+        severityLabel: "Renewed Civil Conflict",
+        conflictTitle: "South Sudan Sub-National & Political Violence",
+        peopleInNeed: "9.9 Million",
+        timeline: "2013–2018 (Renewed Escalation 2025–2026)",
+        status2026: "84% of Population Needs Aid",
+        lat: 7.2,
+        lon: 30.0,
+        summary: "Despite earlier peace agreements, armed hostilities re-escalated in 2025 and 2026 amid political delays, severe flooding, economic collapse, and the influx of hundreds of thousands of refugees fleeing the war in neighboring Sudan.",
+        hotspots: "Upper Nile, Jonglei, Unity State, and Warrap.",
+        actors: "SSPDF, SPLM-IO factions, and armed communal militias.",
+        humanitarian: "9.9 million people—nearly 84% of South Sudan's population—require humanitarian aid in 2026 as the country faces near-universal poverty.",
+        sources: [
+          { label: "Concern Worldwide: South Sudan 2026", url: "https://www.concern.net/news/countries-in-conflict" },
+          { label: "Crisis Group: CrisisWatch", url: "https://www.crisisgroup.org/ku/crisiswatch" }
+        ],
+        fallbackPoly: [[24.1,9.8],[33.2,9.8],[35.2,5.0],[31.8,3.6],[27.5,4.5],[24.1,8.5]]
+      },
+      {
+        id: "ETH",
+        isoNum: "231",
+        name: "Ethiopia",
+        flag: "🇪🇹",
+        region: "Horn of Africa",
+        severity: "high",
+        severityLabel: "Regional Insurgencies",
+        conflictTitle: "Amhara, Oromia & Post-Tigray Regional Conflicts",
+        peopleInNeed: "28.6 Million",
+        timeline: "2018 – Present",
+        status2026: "Active Regional Insurgencies",
+        lat: 9.1,
+        lon: 39.8,
+        summary: "Following the devastating 2020–2022 Tigray war, armed conflict escalated across the Amhara region (beginning in 2023) and Oromia, where federal forces continue counter-insurgency operations against Fano militias and the Oromo Liberation Army (OLA).",
+        hotspots: "Amhara region (Dib Bahr, Gondar, Gojjam), Oromia, and Tigray recovery zones.",
+        actors: "Ethiopian National Defense Force (ENDF), Fano militia factions, and Oromo Liberation Army (OLA).",
+        humanitarian: "Up to 28.6 million people across Ethiopia require humanitarian and food assistance due to overlapping conflict displacement and drought.",
+        sources: [
+          { label: "Concern Worldwide: Ethiopia 2026", url: "https://www.concern.net/news/countries-in-conflict" },
+          { label: "CFR Global Conflict Tracker", url: "https://www.cfr.org/global-conflict-tracker" }
+        ],
+        fallbackPoly: [[33.0,8.0],[37.9,14.8],[42.5,12.5],[47.9,8.0],[42.0,4.0],[36.0,4.5],[34.5,6.5]]
+      },
+      {
+        id: "HTI",
+        isoNum: "332",
+        name: "Haiti",
+        flag: "🇭🇹",
+        region: "Caribbean",
+        severity: "high",
+        severityLabel: "Armed Gang Conflict",
+        conflictTitle: "Port-au-Prince Armed Coalition Conflict",
+        peopleInNeed: "6.4 Million",
+        timeline: "2020 – Present",
+        status2026: "Urban Siege & State Crisis",
+        lat: 18.9,
+        lon: -72.4,
+        summary: "Armed gang coalitions (Viv Ansanm) control over 80% of Port-au-Prince and key transport arteries into Artibonite. Despite the deployment of a UN-authorized Kenya-led Multinational Security Support mission, turf warfare and kidnappings persist in 2026.",
+        hotspots: "Port-au-Prince (Cité Soleil, Carrefour, Croix-des-Bouquets) and Artibonite department.",
+        actors: "Viv Ansanm armed gang coalition, Haitian National Police (PNH), and Multinational Security Support (MSS) force.",
+        humanitarian: "6.4 million Haitians—more than half the population—require humanitarian aid and food assistance in 2026.",
+        sources: [
+          { label: "Concern Worldwide: Haiti 2026", url: "https://www.concern.net/news/countries-in-conflict" },
+          { label: "Crisis Group: 10 Conflicts to Watch 2026", url: "https://www.crisisgroup.org/cmt/global/10-conflicts-watch-2026" }
+        ],
+        fallbackPoly: [[-74.5,18.2],[-74.0,19.9],[-71.7,19.8],[-71.7,18.0],[-74.5,18.2]]
+      },
+      {
+        id: "BFA",
+        isoNum: "854",
+        name: "Burkina Faso",
+        flag: "🇧🇫",
+        region: "Western Sahel / West Africa",
+        severity: "high",
+        severityLabel: "Sahel Insurgency",
+        conflictTitle: "Central Sahel Jihadist Insurgency",
+        peopleInNeed: "4.5 Million",
+        timeline: "2015 – Present",
+        status2026: "Expanding JNIM Blockades & Attacks",
+        lat: 12.3,
+        lon: -1.6,
+        summary: "Armed insurgent groups—primarily JNIM (al-Qaeda affiliate) and Islamic State Sahel Province—control or blockade broad swaths of territory outside major cities, seizing military posts near Bobo-Dioulasso and Ouahigouya in late 2026.",
+        hotspots: "Sahel region, Est, Nord, Boucle du Mouhoun, and Guiriko / Bobo-Dioulasso approaches.",
+        actors: "Burkinabè Armed Forces & VDP auxiliaries, JNIM, and Islamic State Sahel Province (ISSP).",
+        humanitarian: "4.5 million people in Burkina Faso require emergency humanitarian aid in 2026 amid severe town blockades and mass internal displacement.",
+        sources: [
+          { label: "Concern Worldwide: Sahel 2026", url: "https://www.concern.net/news/countries-in-conflict" },
+          { label: "Crisis Group: CrisisWatch", url: "https://www.crisisgroup.org/ku/crisiswatch" }
+        ],
+        fallbackPoly: [[-5.5,10.4],[-2.8,14.5],[0.2,14.9],[2.4,11.9],[0.5,10.9],[-3.0,9.8]]
+      },
+      {
+        id: "MLI",
+        isoNum: "466",
+        name: "Mali",
+        flag: "🇲🇱",
+        region: "Western Sahel / West Africa",
+        severity: "high",
+        severityLabel: "Sahel Armed Conflict",
+        conflictTitle: "Mali Northern & Central Armed Conflict",
+        peopleInNeed: "4.1+ Million",
+        timeline: "2012 – Present",
+        status2026: "Multi-Front Insurgency",
+        lat: 17.2,
+        lon: -3.5,
+        summary: "Since the 2012 rebellion and subsequent breakdown of the Algiers Accord, Mali's military government and Russian Africa Corps partners have fought both Tuareg separatist coalitions (FLA) in the north and JNIM/ISSP jihadist insurgents across central and southern Mali.",
+        hotspots: "Kidal, Timbuktu, Gao, Ménaka, and Mopti.",
+        actors: "Malian Armed Forces (FAMa), Africa Corps, Azawad Liberation Front (FLA), JNIM, and ISSP.",
+        humanitarian: "Millions remain food insecure and displaced across northern and central Mali as humanitarian access shrinks.",
+        sources: [
+          { label: "Concern Worldwide: Sahel Crisis", url: "https://www.concern.net/news/countries-in-conflict" },
+          { label: "Crisis Group: 10 Conflicts to Watch 2026", url: "https://www.crisisgroup.org/cmt/global/10-conflicts-watch-2026" }
+        ],
+        fallbackPoly: [[-12.0,14.0],[-5.0,15.5],[-4.8,25.0],[4.2,20.0],[4.2,15.2],[0.5,14.8],[-5.5,10.5],[-11.5,12.2]]
+      },
+      {
+        id: "NER",
+        isoNum: "562",
+        name: "Niger",
+        flag: "🇳🇪",
+        region: "Central Sahel / West Africa",
+        severity: "elevated",
+        severityLabel: "Sahel & Lake Chad Conflict",
+        conflictTitle: "Tillabéri & Diffa Multi-Border Insurgency",
+        peopleInNeed: "3.1 Million",
+        timeline: "2012 – Present",
+        status2026: "Border Insurgency & Economic Strain",
+        lat: 17.6,
+        lon: 8.1,
+        summary: "Niger faces two active insurgent fronts: jihadist groups (ISSP and JNIM) operating along the tri-border Tillabéri/Tahoua zone shared with Mali and Burkina Faso, and Boko Haram / ISWAP factions around the Lake Chad basin in Diffa.",
+        hotspots: "Tillabéri (tri-border Liptako-Gourma zone), Tahoua, and Diffa (Lake Chad Basin).",
+        actors: "Nigerien Armed Forces (FAN), ISSP, JNIM, and ISWAP / Boko Haram.",
+        humanitarian: "3.1 million Nigeriens require humanitarian aid in 2026 as part of the wider 24.3 million people affected across the Sahel.",
+        sources: [
+          { label: "Concern Worldwide: Niger 2026", url: "https://www.concern.net/news/countries-in-conflict" },
+          { label: "ACLED Conflict Watchlist 2026", url: "https://acleddata.com/series/conflict-watchlist-2026" }
+        ],
+        fallbackPoly: [[0.2,14.8],[4.2,19.8],[12.0,23.5],[15.5,20.5],[13.5,13.5],[7.0,13.0],[2.2,11.9]]
+      },
+      {
+        id: "TCD",
+        isoNum: "148",
+        name: "Chad",
+        flag: "🇹🇩",
+        region: "Central Africa / Sahel",
+        severity: "elevated",
+        severityLabel: "Border & Basin Conflict",
+        conflictTitle: "Lake Chad Basin Insurgency & Eastern Border Crisis",
+        peopleInNeed: "4.5 Million",
+        timeline: "2009 – Present",
+        status2026: "Refugee Influx & Lake Chad Clashes",
+        lat: 15.4,
+        lon: 18.7,
+        summary: "Chad contends with armed insurgent attacks in the western Lake Chad Basin (Baga Sola / Lac province), escalating pastoralist-farmer intercommunal violence in the east, and a massive spillover of refugees from neighboring Sudan's civil war.",
+        hotspots: "Lake Chad Basin (Lac province), Ouaddaï and Sila eastern border provinces, and northern Tibesti.",
+        actors: "Chadian National Army (ANT), Boko Haram / ISWAP factions, and armed communal militias.",
+        humanitarian: "4.5 million people in Chad need humanitarian assistance in 2026, including hundreds of thousands of Sudanese refugees in eastern border camps.",
+        sources: [
+          { label: "Concern Worldwide: Chad 2026", url: "https://www.concern.net/news/countries-in-conflict" },
+          { label: "Crisis Group: CrisisWatch", url: "https://www.crisisgroup.org/ku/crisiswatch" }
+        ],
+        fallbackPoly: [[14.0,13.5],[15.5,23.4],[24.0,19.5],[22.5,13.5],[21.5,8.0],[15.0,7.5]]
+      },
+      {
+        id: "SOM",
+        isoNum: "706",
+        name: "Somalia",
+        flag: "🇸🇴",
+        region: "Horn of Africa",
+        severity: "elevated",
+        severityLabel: "Protracted Insurgency",
+        conflictTitle: "Somali Civil Conflict & Al-Shabaab Insurgency",
+        peopleInNeed: "4.8 Million",
+        timeline: "1991 – Present",
+        status2026: "Active Counter-Insurgency Operations",
+        lat: 5.1,
+        lon: 46.2,
+        summary: "Somalia continues to battle the al-Qaeda-affiliated Al-Shabaab insurgency across central and southern regions alongside political tensions over federal state autonomy and African Union peacekeeper transitions.",
+        hotspots: "Central and Lower Shabelle, Hirshabelle, Jubaland, and Mogadishu security perimeter.",
+        actors: "Somali National Army (SNA), local clan Macawisley forces, AUSSOM peacekeepers, and Al-Shabaab.",
+        humanitarian: "4.8 million people require humanitarian assistance in 2026 as armed blockades restrict NGO access to malnourished rural communities.",
+        sources: [
+          { label: "Concern Worldwide: Somalia 2026", url: "https://www.concern.net/news/countries-in-conflict" },
+          { label: "CFR Global Conflict Tracker", url: "https://www.cfr.org/global-conflict-tracker" }
+        ],
+        fallbackPoly: [[41.0,-1.5],[42.6,11.0],[51.3,11.9],[49.0,6.0],[45.0,1.8]]
+      },
+      {
+        id: "AFG",
+        isoNum: "004",
+        name: "Afghanistan",
+        flag: "🇦🇫",
+        region: "South / Central Asia",
+        severity: "elevated",
+        severityLabel: "Internal & Border Security Crisis",
+        conflictTitle: "ISKP Insurgency & Cross-Border Clashes",
+        peopleInNeed: "21.9 Million",
+        timeline: "1978 – Present (2025–2026 Border Escalation)",
+        status2026: "Cross-Border Violence & Aid Emergency",
+        lat: 33.9,
+        lon: 66.0,
+        summary: "While large-scale conventional war ended in 2021, Afghanistan has experienced sporadic internal attacks by Islamic State Khorasan Province (ISKP) and increased cross-border armed clashes along the Pakistan-Afghanistan border starting in late 2025 and continuing into 2026.",
+        hotspots: "Kunar, Nangarhar, Paktika eastern border provinces, and Kabul urban security checkpoints.",
+        actors: "Taliban security forces, Islamic State Khorasan Province (ISKP), and cross-border military forces.",
+        humanitarian: "21.9 million people—nearly half of Afghanistan's population—require humanitarian assistance in 2026 amid international aid cuts and forced returns.",
+        sources: [
+          { label: "Concern Worldwide: Afghanistan 2026", url: "https://www.concern.net/news/countries-in-conflict" },
+          { label: "CFR Global Conflict Tracker", url: "https://www.cfr.org/global-conflict-tracker" }
+        ],
+        fallbackPoly: [[60.5,34.0],[62.5,37.5],[71.0,38.0],[74.5,37.0],[71.2,34.0],[69.3,31.5],[66.0,29.8],[61.0,30.0]]
+      },
+      {
+        id: "IRN",
+        isoNum: "364",
+        name: "Iran",
+        flag: "🇮🇷",
+        region: "Middle East / Persian Gulf",
+        severity: "elevated",
+        severityLabel: "Regional & Maritime Escalation",
+        conflictTitle: "Regional Confrontation & Strait of Hormuz Escalation",
+        peopleInNeed: "Regional Security Flashpoint",
+        timeline: "2024 – 2026 Escalation",
+        status2026: "Active Maritime & Regional Strikes",
+        lat: 32.4,
+        lon: 53.7,
+        summary: "Direct military exchanges in the wider Middle East theater and a sharp October 2026 surge in attacks and seizures involving commercial shipping in and around the Strait of Hormuz have placed Iran at the center of regional conflict tracking.",
+        hotspots: "Strait of Hormuz, Persian Gulf maritime corridors, and western air defense sectors.",
+        actors: "Islamic Revolutionary Guard Corps (IRGC), regional Axis of Resistance networks, and US/Coalition naval forces.",
+        humanitarian: "Heightened risk to civilian aviation, maritime trade corridors, and domestic economic stability under sanctions.",
+        sources: [
+          { label: "Crisis Group: On Our Radar (Oct 2026)", url: "https://www.crisisgroup.org/sco/global/our-radar" },
+          { label: "CFR Global Conflict Tracker", url: "https://www.cfr.org/global-conflict-tracker" }
+        ],
+        fallbackPoly: [[44.0,39.5],[48.8,38.5],[54.0,37.5],[61.0,36.5],[63.2,27.0],[57.0,25.5],[50.0,29.0],[48.0,30.5],[45.5,35.5]]
+      }
+    ];
+
+    // Fast lookup maps
+    const CONFLICT_BY_ID = {};
+    const CONFLICT_BY_ISONUM = {};
+    CONFLICT_COUNTRIES.forEach((c, idx) => {
+      c.index = idx;
+      CONFLICT_BY_ID[c.id] = c;
+      CONFLICT_BY_ISONUM[c.isoNum] = c;
+      if (c.altIsoNum) CONFLICT_BY_ISONUM[c.altIsoNum] = c;
+    });
+
+    // Simplified continent background outlines (used immediately before/without CDN TopoJSON)
+    const FALLBACK_CONTINENTS = [
+      // North America
+      [[-165,65],[-140,70],[-110,72],[-80,70],[-60,50],[-75,35],[-82,25],[-90,18],[-80,8],[-105,20],[-122,37],[-135,58],[-165,60]],
+      // South America
+      [[-80,10],[-62,10],[-35,-6],[-48,-28],[-68,-54],[-75,-45],[-71,-18],[-81,-4]],
+      // Europe
+      [[-9,38],[-5,48],[8,58],[25,71],[45,68],[58,52],[40,45],[28,41],[15,38],[0,38]],
+      // Africa
+      [[-17,15],[-6,36],[11,37],[33,31],[43,12],[51,11],[40,-11],[35,-25],[18,-35],[12,-17],[9,4],[-8,5]],
+      // Asia
+      [[28,41],[45,42],[60,68],[105,73],[170,66],[142,50],[130,33],[120,22],[104,1],[96,16],[88,22],[78,8],[68,24],[55,22],[43,13],[35,32]],
+      // Australia
+      [[114,-22],[132,-12],[142,-11],[153,-28],[146,-39],[130,-32],[115,-34]]
+    ];
+
+    // =========================================================================
+    // 2. APPLICATION STATE
+    // =========================================================================
+    const state = {
+      cameraActive: false,
+      facingMode: "environment",
+      stream: null,
+      projectionType: "robinson", // 'robinson' | 'equirect'
+      ghostOpacity: 0.45,
+      fillOpacity: 0.60,
+      showCorners: true,
+      cornersLocked: false,
+      soundEnabled: true,
+      activeFilter: "all",
+      selectedCountryId: null,
+      worldTopoFeatures: null,
+      mindarActive: false,
+      mindarSimSweep: false,
+      mindarSweepAngle: 0,
+      mindarSweepRaf: null,
+      mindarController: null,
+      mindarBuffer: null,
+      mindarTargetDims: [1000, 520],
+      mindarTargetFound: false,
+      // 4 corners in viewport pixel coordinates: TL, TR, BR, BL
+      corners: [
+        { x: 80, y: 50 },
+        { x: 920, y: 50 },
+        { x: 920, y: 490 },
+        { x: 80, y: 490 }
+      ]
+    };
+
+    const STAGE_W = 1000;
+    const STAGE_H = 520;
+
+    // =========================================================================
+    // 3. WEB AUDIO SYNTHESIS & VOICE BRIEFING
+    // =========================================================================
+    let audioCtx = null;
+    function playTone(freq = 660, duration = 0.08, type = "sine") {
+      if (!state.soundEnabled) return;
+      try {
+        if (!audioCtx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (AC) audioCtx = new AC();
+        }
+        if (!audioCtx) return;
+        if (audioCtx.state === "suspended") audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {}
+    }
+
+    function speakText(text) {
+      if (!("speechSynthesis" in window)) {
+        showToast("Speech synthesis not supported in this browser.");
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.rate = 1.02;
+      utter.pitch = 0.96;
+      utter.onend = () => {
+        document.getElementById("speakBtnLabel").textContent = "Audio Brief";
+      };
+      document.getElementById("speakBtnLabel").textContent = "Stop Audio";
+      window.speechSynthesis.speak(utter);
+    }
+
+    // =========================================================================
+    // 4. 2D PROJECTIVE HOMOGRAPHY -> CSS MATRIX3D SOLVER
+    // =========================================================================
+    function solveGaussian(A, b) {
+      const n = b.length;
+      for (let i = 0; i < n; i++) {
+        let maxRow = i;
+        for (let k = i + 1; k < n; k++) {
+          if (Math.abs(A[k][i]) > Math.abs(A[maxRow][i])) maxRow = k;
+        }
+        const tmpA = A[i]; A[i] = A[maxRow]; A[maxRow] = tmpA;
+        const tmpB = b[i]; b[i] = b[maxRow]; b[maxRow] = tmpB;
+
+        const pivot = A[i][i] || 1e-12;
+        for (let k = i + 1; k < n; k++) {
+          const c = -A[k][i] / pivot;
+          for (let j = i; j < n; j++) {
+            A[k][j] = i === j ? 0 : A[k][j] + c * A[i][j];
+          }
+          b[k] += c * b[i];
+        }
+      }
+      const x = new Array(n).fill(0);
+      for (let i = n - 1; i >= 0; i--) {
+        x[i] = b[i] / (A[i][i] || 1e-12);
+        for (let k = i - 1; k >= 0; k--) {
+          b[k] -= A[k][i] * x[i];
+        }
+      }
+      return x;
+    }
+
+    function computeHomographyMatrix3d(w, h, dst) {
+      const src = [
+        { x: 0, y: 0 },
+        { x: w, y: 0 },
+        { x: w, y: h },
+        { x: 0, y: h }
+      ];
+      const A = [];
+      const b = [];
+      for (let i = 0; i < 4; i++) {
+        const sx = src[i].x, sy = src[i].y;
+        const dx = dst[i].x, dy = dst[i].y;
+        A.push([sx, sy, 1, 0, 0, 0, -sx * dx, -sy * dx]);
+        b.push(dx);
+        A.push([0, 0, 0, sx, sy, 1, -sx * dy, -sy * dy]);
+        b.push(dy);
+      }
+      const [h11, h12, h13, h21, h22, h23, h31, h32] = solveGaussian(A, b);
+      // Map 3x3 2D projective matrix to 4x4 CSS matrix3d (column-major)
+      const M = [
+        h11, h21, 0, h31,
+        h12, h22, 0, h32,
+        0,   0,   1, 0,
+        h13, h23, 0, 1
+      ];
+      return "matrix3d(" + M.map(v => Number(v.toFixed(7))).join(",") + ")";
+    }
+
+    function updateStageHomography() {
+      const stage = document.getElementById("homographyStage");
+      stage.style.transform = computeHomographyMatrix3d(STAGE_W, STAGE_H, state.corners);
+
+      const handleIds = ["handleTL", "handleTR", "handleBR", "handleBL"];
+      handleIds.forEach((id, idx) => {
+        const el = document.getElementById(id);
+        el.style.left = state.corners[idx].x + "px";
+        el.style.top = state.corners[idx].y + "px";
+      });
+    }
+
+    function resetCornersToViewport(preset = "flat") {
+      const vp = document.getElementById("arViewport");
+      const vw = vp.clientWidth || window.innerWidth;
+      const vh = vp.clientHeight || (window.innerHeight - 90);
+
+      const padX = Math.max(28, vw * 0.06);
+      const padY = Math.max(28, vh * 0.07);
+      const availW = vw - padX * 2;
+      const availH = vh - padY * 2;
+
+      const scale = Math.min(availW / STAGE_W, availH / STAGE_H);
+      const boxW = STAGE_W * scale;
+      const boxH = STAGE_H * scale;
+      const left = (vw - boxW) / 2;
+      const top = (vh - boxH) / 2;
+
+      if (preset === "angledLeft") {
+        state.corners = [
+          { x: left + boxW * 0.06, y: top + boxH * 0.08 },
+          { x: left + boxW * 0.96, y: top - boxH * 0.02 },
+          { x: left + boxW * 0.96, y: top + boxH * 1.02 },
+          { x: left + boxW * 0.06, y: top + boxH * 0.90 }
+        ];
+      } else if (preset === "lookingUp") {
+        state.corners = [
+          { x: left + boxW * 0.08, y: top + boxH * 0.02 },
+          { x: left + boxW * 0.92, y: top + boxH * 0.02 },
+          { x: left + boxW * 1.02, y: top + boxH * 0.98 },
+          { x: left - boxW * 0.02, y: top + boxH * 0.98 }
+        ];
+      } else {
+        state.corners = [
+          { x: left, y: top },
+          { x: left + boxW, y: top },
+          { x: left + boxW, y: top + boxH },
+          { x: left, y: top + boxH }
+        ];
+      }
+      updateStageHomography();
+    }
+
+    // =========================================================================
+    // 5. MAP PROJECTION & SVG RENDERING
+    // =========================================================================
+    function projectLonLat(lon, lat) {
+      if (state.projectionType === "robinson") {
+        // Natural Earth / Robinson-like compromise wall map projection
+        const radLat = (lat * Math.PI) / 180;
+        const xFactor = Math.cos(radLat * 0.72);
+        const x = STAGE_W * 0.5 + (lon / 180) * (STAGE_W * 0.465) * xFactor;
+        const y = STAGE_H * 0.52 - (Math.sin(radLat * 0.92) / Math.sin(Math.PI * 0.46)) * (STAGE_H * 0.45);
+        return [x, y];
+      } else {
+        // Equirectangular / Standard Classroom Wall Map
+        const x = ((lon + 180) / 360) * STAGE_W;
+        const y = ((90 - lat) / 180) * STAGE_H;
+        return [x, y];
+      }
+    }
+
+    function coordsRingToPath(ring) {
+      let d = "";
+      for (let i = 0; i < ring.length; i++) {
+        const [x, y] = projectLonLat(ring[i][0], ring[i][1]);
+        d += (i === 0 ? "M" : "L") + x.toFixed(1) + "," + y.toFixed(1);
+      }
+      return d + "Z";
+    }
+
+    function geoFeatureToSvgPath(feature) {
+      const geom = feature.geometry;
+      if (!geom) return "";
+      if (geom.type === "Polygon") {
+        return geom.coordinates.map(coordsRingToPath).join(" ");
+      } else if (geom.type === "MultiPolygon") {
+        return geom.coordinates.map(poly => poly.map(coordsRingToPath).join(" ")).join(" ");
+      }
+      return "";
+    }
+
+    function renderGraticule() {
+      const g = document.getElementById("graticuleLayer");
+      let html = "";
+      for (let lon = -150; lon <= 150; lon += 30) {
+        let d = "";
+        for (let lat = -80; lat <= 80; lat += 10) {
+          const [x, y] = projectLonLat(lon, lat);
+          d += (lat === -80 ? "M" : "L") + x.toFixed(1) + "," + y.toFixed(1);
+        }
+        html += `<path d="${d}" fill="none" stroke="${state.cameraActive ? '#38bdf8' : '#78350f'}" stroke-width="0.6" stroke-dasharray="3,3" />`;
+      }
+      for (let lat = -60; lat <= 60; lat += 30) {
+        let d = "";
+        for (let lon = -180; lon <= 180; lon += 10) {
+          const [x, y] = projectLonLat(lon, lat);
+          d += (lon === -180 ? "M" : "L") + x.toFixed(1) + "," + y.toFixed(1);
+        }
+        html += `<path d="${d}" fill="none" stroke="${state.cameraActive ? '#38bdf8' : '#78350f'}" stroke-width="${lat === 0 ? '1.1' : '0.6'}" />`;
+      }
+      g.innerHTML = html;
+    }
+
+    function renderMapLayers() {
+      renderGraticule();
+
+      const baseG = document.getElementById("baseWorldLayer");
+      const conflictPolyG = document.getElementById("conflictPolygonsLayer");
+      const pinsG = document.getElementById("conflictPinsLayer");
+
+      document.documentElement.style.setProperty("--fill-alpha", state.fillOpacity);
+
+      // 1. Base world map layer (either high-res TopoJSON or fallback continents)
+      let baseHtml = "";
+      const baseFill = state.cameraActive ? "rgba(15, 23, 42, 0.15)" : "#cbbba0";
+      const baseStroke = state.cameraActive ? "#38bdf8" : "#78664c";
+
+      if (state.worldTopoFeatures && state.worldTopoFeatures.length) {
+        state.worldTopoFeatures.forEach(feat => {
+          const pathD = geoFeatureToSvgPath(feat);
+          if (!pathD) return;
+          baseHtml += `<path d="${pathD}" fill="${baseFill}" stroke="${baseStroke}" stroke-width="0.7" opacity="${state.ghostOpacity}" />`;
+        });
+      } else {
+        FALLBACK_CONTINENTS.forEach(ring => {
+          const pathD = coordsRingToPath(ring);
+          baseHtml += `<path d="${pathD}" fill="${baseFill}" stroke="${baseStroke}" stroke-width="1" opacity="${state.ghostOpacity}" />`;
+        });
+      }
+      baseG.innerHTML = baseHtml;
+
+      // 2. Active Conflict Country Polygons & Pins
+      let polyHtml = "";
+      let pinsHtml = "";
+
+      const visibleCountries = CONFLICT_COUNTRIES.filter(c => {
+        if (state.activeFilter === "all") return true;
+        return c.severity === state.activeFilter;
+      });
+
+      document.getElementById("activeCountBadge").textContent = String(visibleCountries.length);
+
+      visibleCountries.forEach(c => {
+        let countryPathD = "";
+        if (state.worldTopoFeatures) {
+          const matchedFeats = state.worldTopoFeatures.filter(
+            f => String(f.id).padStart(3, "0") === c.isoNum || String(f.id).padStart(3, "0") === c.altIsoNum
+          );
+          if (matchedFeats.length) {
+            countryPathD = matchedFeats.map(geoFeatureToSvgPath).join(" ");
+          }
+        }
+        if (!countryPathD && c.fallbackPoly) {
+          countryPathD = coordsRingToPath(c.fallbackPoly);
+        }
+
+        const isSelected = state.selectedCountryId === c.id;
+        const sevClass =
+          c.severity === "critical"
+            ? "conflict-country-critical"
+            : c.severity === "high"
+            ? "conflict-country-high"
+            : "conflict-country-elevated";
+
+        if (countryPathD) {
+          polyHtml += `
+            <path
+              d="${countryPathD}"
+              data-country-id="${c.id}"
+              class="${sevClass} ${isSelected ? 'conflict-selected' : ''}"
+            >
+              <title>${c.name} — ${c.conflictTitle}</title>
+            </path>
+          `;
+        }
+
+        // Pin position
+        const [px, py] = projectLonLat(c.lon, c.lat);
+        const pinColor =
+          c.severity === "critical" ? "#ef4444" : c.severity === "high" ? "#f97316" : "#eab308";
+
+        pinsHtml += `
+          <g class="ar-country-pin cursor-pointer" data-country-id="${c.id}" transform="translate(${px.toFixed(1)}, ${py.toFixed(1)})">
+            <circle class="radar-pulse" cx="0" cy="0" r="6" fill="none" stroke="${pinColor}" />
+            <circle cx="0" cy="0" r="5.5" fill="${pinColor}" stroke="#ffffff" stroke-width="1.5" />
+            <g transform="translate(0, -11)">
+              <rect x="-26" y="-12" width="52" height="14" rx="4" fill="rgba(2, 6, 23, 0.88)" stroke="${pinColor}" stroke-width="1" />
+              <text x="0" y="-2.5" text-anchor="middle" fill="#f8fafc" font-size="8.5" font-family="JetBrains Mono, monospace" font-weight="700">
+                ${c.flag} ${c.id}
+              </text>
+            </g>
+          </g>
+        `;
+      });
+
+      conflictPolyG.innerHTML = polyHtml;
+      pinsG.innerHTML = pinsHtml;
+
+      // Delegate click events on polygons and pins
+      conflictPolyG.querySelectorAll("[data-country-id]").forEach(el => {
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openConflictModal(el.getAttribute("data-country-id"));
+        });
+      });
+      pinsG.querySelectorAll("[data-country-id]").forEach(el => {
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openConflictModal(el.getAttribute("data-country-id"));
+        });
+      });
+
+      renderDrawerList();
+    }
+
+    // =========================================================================
+    // 6. MODAL POPUP LOGIC
+    // =========================================================================
+    function openConflictModal(countryId) {
+      const country = CONFLICT_BY_ID[countryId];
+      if (!country) return;
+
+      state.selectedCountryId = countryId;
+      playTone(880, 0.09, "triangle");
+      renderMapLayers();
+
+      document.getElementById("modalFlagBox").textContent = country.flag;
+      document.getElementById("modalCountryName").textContent = country.name;
+      document.getElementById("modalConflictTitle").textContent = country.conflictTitle;
+
+      const badge = document.getElementById("modalSeverityBadge");
+      const accent = document.getElementById("modalAccentBar");
+      badge.textContent = country.severityLabel;
+
+      if (country.severity === "critical") {
+        badge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-mono-tech font-semibold uppercase bg-red-500/20 text-red-300 border border-red-500/40";
+        accent.className = "h-1.5 w-full bg-gradient-to-r from-red-600 via-red-500 to-orange-500";
+      } else if (country.severity === "high") {
+        badge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-mono-tech font-semibold uppercase bg-orange-500/20 text-orange-300 border border-orange-500/40";
+        accent.className = "h-1.5 w-full bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500";
+      } else {
+        badge.className = "px-2.5 py-0.5 rounded-full text-[11px] font-mono-tech font-semibold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40";
+        accent.className = "h-1.5 w-full bg-gradient-to-r from-amber-500 via-yellow-400 to-sky-400";
+      }
+
+      document.getElementById("modalMetricNeed").textContent = country.peopleInNeed;
+      document.getElementById("modalMetricTimeline").textContent = country.timeline;
+      document.getElementById("modalMetricRegion").textContent = country.region;
+      document.getElementById("modalMetricStatus").textContent = country.status2026;
+      document.getElementById("modalSummaryText").textContent = country.summary;
+      document.getElementById("modalHotspots").textContent = country.hotspots;
+      document.getElementById("modalActors").textContent = country.actors;
+      document.getElementById("modalHumanitarian").textContent = country.humanitarian;
+
+      const sourcesContainer = document.getElementById("modalSourcesList");
+      sourcesContainer.innerHTML = country.sources
+        .map(
+          s => `
+          <a href="${s.url}" target="_blank" rel="noopener noreferrer"
+             class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-sky-500/20 text-sky-300 border border-slate-700 hover:border-sky-500/40 transition">
+            <span>${s.label}</span>
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+          </a>
+        `
+        )
+        .join("");
+
+      document.getElementById("modalCounterText").textContent = `${country.index + 1} / ${CONFLICT_COUNTRIES.length}`;
+      document.getElementById("conflictModalBackdrop").classList.remove("hidden");
+    }
+
+    function closeConflictModal() {
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+      document.getElementById("speakBtnLabel").textContent = "Audio Brief";
+      document.getElementById("conflictModalBackdrop").classList.add("hidden");
+    }
+
+    // =========================================================================
+    // 7. HOTSPOT DIRECTORY DRAWER
+    // =========================================================================
+    function renderDrawerList() {
+      const listEl = document.getElementById("drawerCountryList");
+      const query = (document.getElementById("searchCountryInput").value || "").trim().toLowerCase();
+
+      const filtered = CONFLICT_COUNTRIES.filter(c => {
+        const matchesFilter = state.activeFilter === "all" || c.severity === state.activeFilter;
+        const matchesQuery =
+          !query ||
+          c.name.toLowerCase().includes(query) ||
+          c.region.toLowerCase().includes(query) ||
+          c.conflictTitle.toLowerCase().includes(query);
+        return matchesFilter && matchesQuery;
+      });
+
+      if (!filtered.length) {
+        listEl.innerHTML = `<div class="p-4 text-center text-xs text-slate-500">No matching conflict countries found.</div>`;
+        return;
+      }
+
+      listEl.innerHTML = filtered
+        .map(c => {
+          const dotColor =
+            c.severity === "critical" ? "bg-red-500" : c.severity === "high" ? "bg-orange-500" : "bg-amber-400";
+          return `
+            <button type="button" data-drawer-country="${c.id}"
+              class="w-full text-left p-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 transition flex items-start justify-between gap-2">
+              <div class="flex items-start gap-2.5">
+                <span class="text-xl leading-none mt-0.5">${c.flag}</span>
+                <div>
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-xs font-bold text-white">${c.name}</span>
+                    <span class="w-2 h-2 rounded-full ${dotColor}"></span>
+                  </div>
+                  <p class="text-[11px] text-slate-400 line-clamp-1">${c.conflictTitle}</p>
+                  <p class="text-[10px] font-mono-tech text-red-300 mt-0.5">Need: ${c.peopleInNeed}</p>
+                </div>
+              </div>
+              <span class="text-[10px] font-mono-tech text-sky-400 shrink-0 mt-1">Inspect →</span>
+            </button>
+          `;
+        })
+        .join("");
+
+      listEl.querySelectorAll("[data-drawer-country]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          openConflictModal(btn.getAttribute("data-drawer-country"));
+        });
+      });
+    }
+
+    // =========================================================================
+    // 8. LIVE WEBCAM AR HANDLER
+    // =========================================================================
+    async function startCameraAR() {
+      const video = document.getElementById("cameraVideo");
+      try {
+        if (state.stream) {
+          state.stream.getTracks().forEach(t => t.stop());
+        }
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: state.facingMode },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          },
+          audio: false
+        });
+        state.stream = stream;
+        video.srcObject = stream;
+        video.classList.remove("hidden");
+
+        state.cameraActive = true;
+        document.getElementById("simulatedPaperBg").classList.add("opacity-0", "pointer-events-none");
+        document.getElementById("arStatusBadge").textContent = "LIVE CAMERA AR ACTIVE";
+        document.getElementById("arStatusBadge").className =
+          "px-2 py-0.5 text-[10px] font-mono-tech uppercase tracking-wider rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+        document.getElementById("btnCameraLabel").textContent = "Stop Camera AR";
+        document.getElementById("btnFlipCamera").classList.remove("hidden");
+        document.getElementById("btnFlipCamera").classList.add("flex");
+
+        // Set ghost alignment wireframe to 35% so user can align continents with their physical wall map
+        state.ghostOpacity = 0.35;
+        document.getElementById("sliderGhostOpacity").value = "35";
+        document.getElementById("valGhostOpacity").textContent = "35%";
+
+        renderMapLayers();
+        showToast("Camera AR active! Drag the 4 corners (TL, TR, BR, BL) onto your physical wall map.");
+      } catch (err) {
+        showToast("Camera access unavailable in this view — running in Interactive Simulated Wall AR Mode.");
+      }
+    }
+
+    function stopCameraAR() {
+      const video = document.getElementById("cameraVideo");
+      if (state.stream) {
+        state.stream.getTracks().forEach(t => t.stop());
+        state.stream = null;
+      }
+      video.classList.add("hidden");
+      state.cameraActive = false;
+      document.getElementById("simulatedPaperBg").classList.remove("opacity-0", "pointer-events-none");
+      document.getElementById("arStatusBadge").textContent = "Simulated Wall Mode";
+      document.getElementById("arStatusBadge").className =
+        "px-2 py-0.5 text-[10px] font-mono-tech uppercase tracking-wider rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40";
+      document.getElementById("btnCameraLabel").textContent = "Start Camera AR";
+      document.getElementById("btnFlipCamera").classList.add("hidden");
+      document.getElementById("btnFlipCamera").classList.remove("flex");
+
+      state.ghostOpacity = 0.45;
+      document.getElementById("sliderGhostOpacity").value = "45";
+      document.getElementById("valGhostOpacity").textContent = "45%";
+      renderMapLayers();
+    }
+
+    // =========================================================================
+    // 9. DRAGGABLE 4-CORNER CALIBRATION INTERACTION
+    // =========================================================================
+    function initCornerDragging() {
+      const vp = document.getElementById("arViewport");
+      let activeCornerIdx = null;
+
+      document.querySelectorAll(".corner-handle").forEach(handle => {
+        handle.addEventListener("pointerdown", e => {
+          if (state.cornersLocked) {
+            showToast("4-Corner pins are locked. Unlock them in AR Controls to adjust.");
+            return;
+          }
+          e.preventDefault();
+          e.stopPropagation();
+          activeCornerIdx = Number(handle.getAttribute("data-corner"));
+          handle.setPointerCapture(e.pointerId);
+          playTone(520, 0.04, "sine");
+        });
+
+        handle.addEventListener("pointermove", e => {
+          if (activeCornerIdx === null) return;
+          const rect = vp.getBoundingClientRect();
+          const x = Math.max(12, Math.min(rect.width - 12, e.clientX - rect.left));
+          const y = Math.max(12, Math.min(rect.height - 12, e.clientY - rect.top));
+          state.corners[activeCornerIdx] = { x, y };
+          updateStageHomography();
+        });
+
+        const endDrag = () => {
+          if (activeCornerIdx !== null) {
+            playTone(740, 0.05, "sine");
+            activeCornerIdx = null;
+          }
+        };
+        handle.addEventListener("pointerup", endDrag);
+        handle.addEventListener("pointercancel", endDrag);
+      });
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById("toastBanner");
+      t.textContent = msg;
+      t.classList.remove("hidden");
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => {
+        t.classList.add("hidden");
+      }, 3600);
+    }
+
+    // =========================================================================
+    // 9B. MINDAR IMAGE TRACKING & IN-BROWSER .MIND COMPILER
+    // =========================================================================
+    function getMindarNamespace() {
+      if (window.MINDAR && window.MINDAR.IMAGE) return window.MINDAR.IMAGE;
+      return null;
+    }
+
+    // Create a clean high-contrast reference canvas from our current SVG world map for compilation
+    function buildStandardMapCanvas() {
+      const c = document.createElement("canvas");
+      c.width = 800;
+      c.height = 416;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#e8dfc8";
+      ctx.fillRect(0, 0, c.width, c.height);
+
+      // Draw graticule grid lines for high-contrast corner/intersection keypoints
+      ctx.strokeStyle = "#78552b";
+      ctx.lineWidth = 1;
+      for (let x = 40; x < c.width; x += 60) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, c.height); ctx.stroke();
+      }
+      for (let y = 30; y < c.height; y += 50) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(c.width, y); ctx.stroke();
+      }
+
+      const scaleX = c.width / STAGE_W;
+      const scaleY = c.height / STAGE_H;
+      ctx.save();
+      ctx.scale(scaleX, scaleY);
+
+      ctx.fillStyle = "#8c7a5b";
+      ctx.strokeStyle = "#2b2114";
+      ctx.lineWidth = 1.6;
+
+      const features = state.worldTopoFeatures && state.worldTopoFeatures.length
+        ? state.worldTopoFeatures
+        : null;
+
+      if (features) {
+        features.forEach(feat => {
+          const d = geoFeatureToSvgPath(feat);
+          if (!d) return;
+          const p = new Path2D(d);
+          ctx.fill(p);
+          ctx.stroke(p);
+        });
+      } else {
+        FALLBACK_CONTINENTS.forEach(ring => {
+          const d = coordsRingToPath(ring);
+          const p = new Path2D(d);
+          ctx.fill(p);
+          ctx.stroke(p);
+        });
+      }
+      ctx.restore();
+      return c;
+    }
+
+    function renderFeaturePointsPreview(sourceImgOrCanvas, compiledDataList) {
+      const preview = document.getElementById("mindarPreviewCanvas");
+      const placeholder = document.getElementById("mindarPreviewPlaceholder");
+      const countEl = document.getElementById("mindarFeatureCount");
+      placeholder.classList.add("hidden");
+
+      const ctx = preview.getContext("2d");
+      ctx.clearRect(0, 0, preview.width, preview.height);
+
+      let totalPts = 0;
+      if (compiledDataList && compiledDataList.length > 0 && compiledDataList[0].trackingData) {
+        const td = compiledDataList[0];
+        const targetImg = td.trackingImageList && td.trackingImageList[0];
+        if (targetImg && targetImg.data && targetImg.width && targetImg.height) {
+          preview.width = targetImg.width;
+          preview.height = targetImg.height;
+          const imgData = ctx.createImageData(targetImg.width, targetImg.height);
+          const buf32 = new Uint32Array(imgData.data.buffer);
+          const alpha = (0xff << 24);
+          for (let i = 0; i < targetImg.data.length; i++) {
+            const v = targetImg.data[i];
+            buf32[i] = alpha | (v << 16) | (v << 8) | v;
+          }
+          ctx.putImageData(imgData, 0, 0);
+        } else if (sourceImgOrCanvas) {
+          preview.width = 500;
+          preview.height = 260;
+          ctx.drawImage(sourceImgOrCanvas, 0, 0, preview.width, preview.height);
+        }
+
+        // Overlay extracted maxima/minima & tracking points
+        const points = (td.trackingData[0] && td.trackingData[0].points) || [];
+        const kpmMax = (td.matchingData && td.matchingData[0] && td.matchingData[0].maximaPoints) || [];
+        const kpmMin = (td.matchingData && td.matchingData[0] && td.matchingData[0].minimaPoints) || [];
+        const allPoints = [...points, ...kpmMax, ...kpmMin];
+        totalPts = allPoints.length;
+
+        ctx.strokeStyle = "#10b981";
+        ctx.fillStyle = "#38bdf8";
+        allPoints.forEach((pt, idx) => {
+          const px = Math.round(pt.x);
+          const py = Math.round(pt.y);
+          if (idx % 2 === 0) {
+            ctx.fillRect(px - 2, py - 2, 4, 4);
+          } else {
+            ctx.beginPath();
+            ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        });
+      } else if (sourceImgOrCanvas) {
+        preview.width = 500;
+        preview.height = 260;
+        ctx.drawImage(sourceImgOrCanvas, 0, 0, preview.width, preview.height);
+        // Synthetic corner & coastline feature visualization fallback
+        ctx.fillStyle = "#10b981";
+        for (let i = 0; i < 140; i++) {
+          const rx = 30 + ((i * 73) % (preview.width - 60));
+          const ry = 25 + ((i * 47) % (preview.height - 50));
+          ctx.fillRect(rx - 2, ry - 2, 4, 4);
+        }
+        totalPts = 140;
+      }
+
+      countEl.textContent = String(totalPts);
+    }
+
+    async function compileImageElementToMind(imgOrCanvas, labelText = "Standard Wall Map") {
+      const mindar = getMindarNamespace();
+      const progBox = document.getElementById("mindarProgressBox");
+      const progBar = document.getElementById("mindarProgressBar");
+      const progPct = document.getElementById("mindarProgressPct");
+      const progLabel = document.getElementById("mindarProgressLabel");
+      const statusText = document.getElementById("mindarEngineStatusText");
+      const dlBtn = document.getElementById("btnMindarDownload");
+
+      progBox.classList.remove("hidden");
+      progLabel.textContent = `Compiling ${labelText} with MindAR.IMAGE.Compiler...`;
+      progBar.style.width = "5%";
+      progPct.textContent = "5%";
+
+      try {
+        if (mindar && mindar.Compiler) {
+          const compiler = new mindar.Compiler();
+          const dataList = await compiler.compileImageTargets([imgOrCanvas], (progress) => {
+            const p = Math.min(100, Math.max(0, Number(progress) || 0));
+            progBar.style.width = p.toFixed(1) + "%";
+            progPct.textContent = p.toFixed(0) + "%";
+          });
+          const exportedBuffer = await compiler.exportData();
+          state.mindarBuffer = exportedBuffer;
+          renderFeaturePointsPreview(imgOrCanvas, dataList);
+
+          dlBtn.disabled = false;
+          dlBtn.className = "px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition cursor-pointer";
+          statusText.textContent = `Compiled ${labelText} (.mind ready, ${(exportedBuffer.byteLength / 1024).toFixed(1)} KB)`;
+          showToast(`MindAR compiled "${labelText}" successfully!`);
+          return exportedBuffer;
+        } else {
+          // Graceful fallback if CDN script is still loading or blocked offline
+          for (let p = 15; p <= 100; p += 25) {
+            await new Promise(r => setTimeout(r, 90));
+            progBar.style.width = p + "%";
+            progPct.textContent = p + "%";
+          }
+          renderFeaturePointsPreview(imgOrCanvas, null);
+          state.mindarBuffer = new Uint8Array([77, 73, 78, 68]).buffer;
+          dlBtn.disabled = false;
+          dlBtn.className = "px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition cursor-pointer";
+          statusText.textContent = `Target "${labelText}" Ready (Simulated MindAR Tracker)`;
+          showToast(`Target "${labelText}" prepared!`);
+          return state.mindarBuffer;
+        }
+      } catch (err) {
+        statusText.textContent = "Compiler Warning: Using built-in homography tracker";
+        renderFeaturePointsPreview(imgOrCanvas, null);
+        return null;
+      }
+    }
+
+    // Multiply 4x4 column-major matrix M by 4D vector v
+    function mulMat4Vec4(m, v) {
+      return [
+        m[0] * v[0] + m[4] * v[1] + m[8] * v[2] + m[12] * v[3],
+        m[1] * v[0] + m[5] * v[1] + m[9] * v[2] + m[13] * v[3],
+        m[2] * v[0] + m[6] * v[1] + m[10] * v[2] + m[14] * v[3],
+        m[3] * v[0] + m[7] * v[1] + m[11] * v[2] + m[15] * v[3]
+      ];
+    }
+
+    // Project MindAR 3D target corner (tx, ty, 0) through worldMatrix & projectionMatrix to screen pixels
+    function projectMindarPointToViewport(tx, ty, worldMatrix, projMatrix, vpWidth, vpHeight) {
+      const mv = mulMat4Vec4(worldMatrix, [tx, ty, 0, 1]);
+      const clip = mulMat4Vec4(projMatrix, mv);
+      const w = Math.abs(clip[3]) > 1e-6 ? clip[3] : 1e-6;
+      const ndcX = clip[0] / w;
+      const ndcY = clip[1] / w;
+      return {
+        x: (ndcX + 1) * 0.5 * vpWidth,
+        y: (1 - ndcY) * 0.5 * vpHeight
+      };
+    }
+
+    async function startMindarTracking() {
+      const mindar = getMindarNamespace();
+      const statusBadge = document.getElementById("arStatusBadge");
+      const startStopBtn = document.getElementById("btnMindarStartStop");
+      const scanOverlay = document.getElementById("mindarScanningOverlay");
+      const topBtnLabel = document.getElementById("btnMindarLabel");
+
+      // Ensure a target buffer exists; if not, compile the standard map automatically
+      if (!state.mindarBuffer) {
+        const stdCanvas = buildStandardMapCanvas();
+        await compileImageElementToMind(stdCanvas, "Standard World Map");
+      }
+
+      // If camera is not running yet, try starting camera first
+      if (!state.cameraActive) {
+        await startCameraAR();
+      }
+
+      state.mindarActive = true;
+      topBtnLabel.textContent = "MindAR: ON";
+      startStopBtn.textContent = "Stop MindAR Tracking";
+      startStopBtn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-500 text-white transition";
+
+      const video = document.getElementById("cameraVideo");
+      const vp = document.getElementById("arViewport");
+
+      if (state.cameraActive && video.videoWidth > 0 && mindar && mindar.Controller && state.mindarBuffer && state.mindarBuffer.byteLength > 16) {
+        try {
+          if (state.mindarController) {
+            try { state.mindarController.stopProcessVideo(); } catch (e) {}
+          }
+          const vw = video.videoWidth || 1280;
+          const vh = video.videoHeight || 720;
+
+          const controller = new mindar.Controller({
+            inputWidth: vw,
+            inputHeight: vh,
+            maxTrack: 1,
+            warmupTolerance: 2,
+            missTolerance: 5,
+            filterMinCF: 0.001,
+            filterBeta: 1000,
+            onUpdate: (data) => {
+              if (!state.mindarActive) return;
+              if (data.type === "updateMatrix") {
+                const { targetIndex, worldMatrix } = data;
+                if (targetIndex !== 0) return;
+
+                if (worldMatrix === null) {
+                  state.mindarTargetFound = false;
+                  scanOverlay.classList.remove("hidden");
+                  statusBadge.textContent = "MINDAR: SCANNING WALL...";
+                  statusBadge.className = "px-2 py-0.5 text-[10px] font-mono-tech uppercase tracking-wider rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/40";
+                } else {
+                  if (!state.mindarTargetFound) {
+                    state.mindarTargetFound = true;
+                    playTone(920, 0.08, "triangle");
+                  }
+                  scanOverlay.classList.add("hidden");
+                  statusBadge.textContent = "MINDAR 6-DOF LOCKED";
+                  statusBadge.className = "px-2 py-0.5 text-[10px] font-mono-tech uppercase tracking-wider rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+
+                  const proj = controller.getProjectionMatrix();
+                  const [mw, mh] = state.mindarTargetDims;
+                  const rectW = vp.clientWidth || window.innerWidth;
+                  const rectH = vp.clientHeight || window.innerHeight;
+
+                  // Project 4 corners of tracked image target: TL (0, mh), TR (mw, mh), BR (mw, 0), BL (0, 0)
+                  const tl = projectMindarPointToViewport(0, mh, worldMatrix, proj, rectW, rectH);
+                  const tr = projectMindarPointToViewport(mw, mh, worldMatrix, proj, rectW, rectH);
+                  const br = projectMindarPointToViewport(mw, 0, worldMatrix, proj, rectW, rectH);
+                  const bl = projectMindarPointToViewport(0, 0, worldMatrix, proj, rectW, rectH);
+
+                  const smooth = 0.35;
+                  const nextCorners = [tl, tr, br, bl];
+                  for (let i = 0; i < 4; i++) {
+                    state.corners[i].x = state.corners[i].x * (1 - smooth) + nextCorners[i].x * smooth;
+                    state.corners[i].y = state.corners[i].y * (1 - smooth) + nextCorners[i].y * smooth;
+                  }
+                  updateStageHomography();
+                }
+              }
+            }
+          });
+
+          const blobUrl = URL.createObjectURL(new Blob([state.mindarBuffer]));
+          const { dimensions } = await controller.addImageTargets(blobUrl);
+          if (dimensions && dimensions[0]) {
+            state.mindarTargetDims = dimensions[0];
+          }
+          state.mindarController = controller;
+          scanOverlay.classList.remove("hidden");
+          controller.processVideo(video);
+          showToast("MindAR Image Tracking active! Point your camera at the wall map.");
+          return;
+        } catch (err) {
+          console.warn("MindAR live controller fallback:", err);
+        }
+      }
+
+      // If running in Simulated Wall Mode (no hardware camera feed), start 6-DoF simulated MindAR tracking sweep
+      startMindarSimulatedSweep();
+      showToast("MindAR 6-DoF Tracking active (Simulated Wall Camera Mode).");
+    }
+
+    function stopMindarTracking() {
+      state.mindarActive = false;
+      state.mindarTargetFound = false;
+      stopMindarSimulatedSweep();
+
+      if (state.mindarController) {
+        try { state.mindarController.stopProcessVideo(); } catch (e) {}
+        state.mindarController = null;
+      }
+
+      document.getElementById("mindarScanningOverlay").classList.add("hidden");
+      document.getElementById("btnMindarLabel").textContent = "MindAR Track";
+      const startStopBtn = document.getElementById("btnMindarStartStop");
+      startStopBtn.textContent = "Start MindAR Tracking";
+      startStopBtn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white transition";
+
+      const statusBadge = document.getElementById("arStatusBadge");
+      statusBadge.textContent = state.cameraActive ? "LIVE CAMERA AR ACTIVE" : "Simulated Wall Mode";
+    }
+
+    function startMindarSimulatedSweep() {
+      if (state.mindarSweepRaf) cancelAnimationFrame(state.mindarSweepRaf);
+      state.mindarSimSweep = true;
+      const statusBadge = document.getElementById("arStatusBadge");
+      statusBadge.textContent = "MINDAR 6-DOF TRACKING (SIM)";
+      statusBadge.className = "px-2 py-0.5 text-[10px] font-mono-tech uppercase tracking-wider rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/40";
+
+      const vp = document.getElementById("arViewport");
+      function stepSweep() {
+        if (!state.mindarSimSweep) return;
+        state.mindarSweepAngle += 0.018;
+        const t = state.mindarSweepAngle;
+
+        const vw = vp.clientWidth || window.innerWidth;
+        const vh = vp.clientHeight || (window.innerHeight - 90);
+        const scale = Math.min((vw * 0.84) / STAGE_W, (vh * 0.82) / STAGE_H);
+        const boxW = STAGE_W * scale;
+        const boxH = STAGE_H * scale;
+        const cx = vw * 0.5 + Math.sin(t * 0.9) * 18;
+        const cy = vh * 0.5 + Math.cos(t * 0.7) * 12;
+
+        // Simulate 3D yaw + pitch perspective distortion tracked by MindAR
+        const yaw = Math.sin(t) * 26;
+        const pitch = Math.cos(t * 0.8) * 16;
+
+        state.corners = [
+          { x: cx - boxW * 0.5 + pitch, y: cy - boxH * 0.5 + yaw * 0.5 },
+          { x: cx + boxW * 0.5 - pitch, y: cy - boxH * 0.5 - yaw * 0.5 },
+          { x: cx + boxW * 0.5 + pitch, y: cy + boxH * 0.5 + yaw * 0.5 },
+          { x: cx - boxW * 0.5 - pitch, y: cy + boxH * 0.5 - yaw * 0.5 }
+        ];
+        updateStageHomography();
+        state.mindarSweepRaf = requestAnimationFrame(stepSweep);
+      }
+      state.mindarSweepRaf = requestAnimationFrame(stepSweep);
+    }
+
+    function stopMindarSimulatedSweep() {
+      state.mindarSimSweep = false;
+      if (state.mindarSweepRaf) {
+        cancelAnimationFrame(state.mindarSweepRaf);
+        state.mindarSweepRaf = null;
+      }
+    }
+
+    // =========================================================================
+    // 10. INITIALIZE & BIND ALL UI CONTROLS
+    // =========================================================================
+    window.addEventListener("DOMContentLoaded", () => {
+      resetCornersToViewport("flat");
+      initCornerDragging();
+      renderMapLayers();
+
+      // Load high-precision world country borders from jsDelivr world-atlas if online
+      fetch("https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json")
+        .then(r => r.json())
+        .then(worldData => {
+          if (window.topojson && worldData && worldData.objects && worldData.objects.countries) {
+            const countriesGeo = window.topojson.feature(worldData, worldData.objects.countries);
+            state.worldTopoFeatures = countriesGeo.features || [];
+            renderMapLayers();
+          }
+        })
+        .catch(() => {
+          // Fallback built-in vector paths already rendered
+        });
+
+      window.addEventListener("resize", () => {
+        if (!state.cornersLocked) {
+          resetCornersToViewport("flat");
+        }
+      });
+
+      // Camera toggle
+      document.getElementById("btnToggleCamera").addEventListener("click", () => {
+        if (state.cameraActive) stopCameraAR();
+        else startCameraAR();
+      });
+
+      // Flip camera
+      document.getElementById("btnFlipCamera").addEventListener("click", () => {
+        state.facingMode = state.facingMode === "environment" ? "user" : "environment";
+        startCameraAR();
+      });
+
+      // Show/Hide 4 corners
+      document.getElementById("btnToggleCalibrate").addEventListener("click", () => {
+        state.showCorners = !state.showCorners;
+        const cornersLayer = document.getElementById("cornersLayer");
+        const frame = document.getElementById("arBoundaryFrame");
+        const label = document.getElementById("calibrateBtnText");
+        if (state.showCorners) {
+          cornersLayer.classList.remove("hidden");
+          frame.classList.remove("hidden");
+          label.textContent = "Hide 4 Corners";
+        } else {
+          cornersLayer.classList.add("hidden");
+          frame.classList.add("hidden");
+          label.textContent = "Show 4 Corners";
+        }
+      });
+
+      // Reset alignment
+      document.getElementById("btnAutoAlign").addEventListener("click", () => {
+        state.cornersLocked = false;
+        resetCornersToViewport("flat");
+        showToast("4-Corner alignment reset to centered wall frame.");
+      });
+
+      // Settings panel toggle
+      document.getElementById("btnOpenSettings").addEventListener("click", () => {
+        document.getElementById("settingsPanel").classList.toggle("hidden");
+      });
+      document.getElementById("btnCloseSettings").addEventListener("click", () => {
+        document.getElementById("settingsPanel").classList.add("hidden");
+      });
+
+      // Drawer toggle
+      document.getElementById("btnToggleDrawer").addEventListener("click", () => {
+        document.getElementById("hotspotDrawer").classList.toggle("hidden");
+      });
+      document.getElementById("btnCloseDrawer").addEventListener("click", () => {
+        document.getElementById("hotspotDrawer").classList.add("hidden");
+      });
+      document.getElementById("searchCountryInput").addEventListener("input", renderDrawerList);
+
+      // Dismiss bottom-left hint
+      document.getElementById("btnDismissHint").addEventListener("click", () => {
+        document.getElementById("posterVisualHint").classList.add("hidden");
+      });
+
+      // Filter pills
+      document.querySelectorAll(".filter-pill").forEach(btn => {
+        btn.addEventListener("click", () => {
+          state.activeFilter = btn.getAttribute("data-filter");
+          document.querySelectorAll(".filter-pill").forEach(b => {
+            b.className =
+              "filter-pill px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700 transition flex items-center gap-1.5";
+          });
+          btn.className = "filter-pill px-2.5 py-1 rounded-full text-xs font-medium bg-red-500 text-white transition flex items-center gap-1.5";
+          renderMapLayers();
+        });
+      });
+
+      // Projection buttons
+      document.getElementById("projRobinson").addEventListener("click", () => {
+        state.projectionType = "robinson";
+        document.getElementById("projRobinson").className =
+          "px-2.5 py-1.5 rounded-lg font-medium bg-sky-500/20 text-sky-300 border border-sky-500/50 transition";
+        document.getElementById("projEquirect").className =
+          "px-2.5 py-1.5 rounded-lg font-medium bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-800 transition";
+        document.getElementById("hudProjectionLabel").textContent = "ROBINSON WALL MAP";
+        renderMapLayers();
+      });
+
+      document.getElementById("projEquirect").addEventListener("click", () => {
+        state.projectionType = "equirect";
+        document.getElementById("projEquirect").className =
+          "px-2.5 py-1.5 rounded-lg font-medium bg-sky-500/20 text-sky-300 border border-sky-500/50 transition";
+        document.getElementById("projRobinson").className =
+          "px-2.5 py-1.5 rounded-lg font-medium bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-800 transition";
+        document.getElementById("hudProjectionLabel").textContent = "MERCATOR / EQUIRECTANGULAR";
+        renderMapLayers();
+      });
+
+      // Opacity Sliders
+      document.getElementById("sliderGhostOpacity").addEventListener("input", e => {
+        const val = Number(e.target.value);
+        state.ghostOpacity = val / 100;
+        document.getElementById("valGhostOpacity").textContent = val + "%";
+        renderMapLayers();
+      });
+
+      document.getElementById("sliderFillOpacity").addEventListener("input", e => {
+        const val = Number(e.target.value);
+        state.fillOpacity = val / 100;
+        document.getElementById("valFillOpacity").textContent = val + "%";
+        document.documentElement.style.setProperty("--fill-alpha", state.fillOpacity);
+      });
+
+      // Lock Corners button
+      document.getElementById("btnLockCorners").addEventListener("click", () => {
+        state.cornersLocked = !state.cornersLocked;
+        const btn = document.getElementById("btnLockCorners");
+        const hud = document.getElementById("hudLockState");
+        if (state.cornersLocked) {
+          btn.textContent = "Locked 🔒";
+          btn.className = "px-3 py-1 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40 transition";
+          hud.textContent = "LOCKED TO WALL";
+          hud.className = "text-amber-400";
+          showToast("4-Corner calibration locked! Tap any glowing country on your wall map.");
+        } else {
+          btn.textContent = "Unlocked";
+          btn.className = "px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition";
+          hud.textContent = "UNLOCKED (DRAG CORNERS)";
+          hud.className = "text-emerald-400";
+        }
+      });
+
+      // Sound toggle
+      document.getElementById("btnToggleSound").addEventListener("click", () => {
+        state.soundEnabled = !state.soundEnabled;
+        const btn = document.getElementById("btnToggleSound");
+        if (state.soundEnabled) {
+          btn.textContent = "Sound ON";
+          btn.className = "px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 transition";
+          playTone(660, 0.06);
+        } else {
+          btn.textContent = "Muted";
+          btn.className = "px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 border border-slate-700 transition";
+          if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+        }
+      });
+
+      // Perspective test presets
+      document.getElementById("presetFlat").addEventListener("click", () => resetCornersToViewport("flat"));
+      document.getElementById("presetAngledLeft").addEventListener("click", () => resetCornersToViewport("angledLeft"));
+      document.getElementById("presetLookingUp").addEventListener("click", () => resetCornersToViewport("lookingUp"));
+
+      // Modal close & navigation
+      document.getElementById("btnCloseModal").addEventListener("click", closeConflictModal);
+      document.getElementById("conflictModalBackdrop").addEventListener("click", e => {
+        if (e.target.id === "conflictModalBackdrop") closeConflictModal();
+      });
+
+      document.getElementById("btnPrevConflict").addEventListener("click", () => {
+        const cur = CONFLICT_BY_ID[state.selectedCountryId];
+        const prevIdx = cur ? (cur.index - 1 + CONFLICT_COUNTRIES.length) % CONFLICT_COUNTRIES.length : 0;
+        openConflictModal(CONFLICT_COUNTRIES[prevIdx].id);
+      });
+
+      document.getElementById("btnNextConflict").addEventListener("click", () => {
+        const cur = CONFLICT_BY_ID[state.selectedCountryId];
+        const nextIdx = cur ? (cur.index + 1) % CONFLICT_COUNTRIES.length : 0;
+        openConflictModal(CONFLICT_COUNTRIES[nextIdx].id);
+      });
+
+      document.getElementById("btnSpeakBriefing").addEventListener("click", () => {
+        const cur = CONFLICT_BY_ID[state.selectedCountryId];
+        if (!cur) return;
+        if ("speechSynthesis" in window && window.speechSynthesis.speaking) {
+          window.speechSynthesis.cancel();
+          document.getElementById("speakBtnLabel").textContent = "Audio Brief";
+        } else {
+          speakText(`${cur.name}. ${cur.conflictTitle}. ${cur.peopleInNeed} people in need of aid in 2026. ${cur.summary}`);
+        }
+      });
+
+      // MindAR Studio Modal & Tracking Bindings
+      const mindarModal = document.getElementById("mindarStudioModal");
+      document.getElementById("btnOpenMindAR").addEventListener("click", () => {
+        mindarModal.classList.remove("hidden");
+      });
+      document.getElementById("btnCloseMindarStudio").addEventListener("click", () => {
+        mindarModal.classList.add("hidden");
+      });
+      document.getElementById("btnDoneMindarStudio").addEventListener("click", () => {
+        mindarModal.classList.add("hidden");
+      });
+
+      document.getElementById("btnMindarCompileDefault").addEventListener("click", async () => {
+        const stdCanvas = buildStandardMapCanvas();
+        await compileImageElementToMind(stdCanvas, "Standard World Map");
+      });
+
+      document.getElementById("btnMindarSnapCamera").addEventListener("click", async () => {
+        const video = document.getElementById("cameraVideo");
+        if (!state.cameraActive || !video.videoWidth) {
+          showToast("Starting camera first — point at your wall map, then click Snap again, or compiling simulated wall map now.");
+          const stdCanvas = buildStandardMapCanvas();
+          await compileImageElementToMind(stdCanvas, "Captured Wall Map Frame");
+          return;
+        }
+        const snapCanvas = document.createElement("canvas");
+        snapCanvas.width = video.videoWidth;
+        snapCanvas.height = video.videoHeight;
+        snapCanvas.getContext("2d").drawImage(video, 0, 0);
+        await compileImageElementToMind(snapCanvas, "Live Camera Wall Map");
+      });
+
+      document.getElementById("inputMindarFile").addEventListener("change", async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const ext = file.name.split(".").pop().toLowerCase();
+        if (ext === "mind") {
+          const buf = await file.arrayBuffer();
+          state.mindarBuffer = buf;
+          const mindar = getMindarNamespace();
+          if (mindar && mindar.Compiler) {
+            try {
+              const compiler = new mindar.Compiler();
+              const dataList = compiler.importData(buf);
+              renderFeaturePointsPreview(null, dataList);
+            } catch (err) {}
+          }
+          const dlBtn = document.getElementById("btnMindarDownload");
+          dlBtn.disabled = false;
+          dlBtn.className = "px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition cursor-pointer";
+          document.getElementById("mindarEngineStatusText").textContent = `Loaded ${file.name} (${(buf.byteLength / 1024).toFixed(1)} KB)`;
+          showToast(`Loaded pre-compiled MindAR target: ${file.name}`);
+        } else {
+          const img = new Image();
+          img.onload = async () => {
+            await compileImageElementToMind(img, file.name);
+          };
+          img.src = URL.createObjectURL(file);
+        }
+      });
+
+      document.getElementById("btnMindarDownload").addEventListener("click", () => {
+        if (!state.mindarBuffer) return;
+        const blob = new Blob([state.mindarBuffer], { type: "application/octet-stream" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "wallmap-target.mind";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+      });
+
+      document.getElementById("btnMindarStartStop").addEventListener("click", async () => {
+        if (state.mindarActive) {
+          stopMindarTracking();
+        } else {
+          await startMindarTracking();
+          mindarModal.classList.add("hidden");
+        }
+      });
+
+      document.getElementById("btnMindarSimSweep").addEventListener("click", () => {
+        if (state.mindarSimSweep) {
+          stopMindarSimulatedSweep();
+          resetCornersToViewport("flat");
+          showToast("Stopped 6-DoF simulated sweep.");
+        } else {
+          startMindarSimulatedSweep();
+          mindarModal.classList.add("hidden");
+          showToast("Running 6-DoF MindAR pose tracking simulation! Tap any country while moving.");
+        }
+      });
+
+      // Keyboard Escape support
+      window.addEventListener("keydown", e => {
+        if (e.key === "Escape") {
+          closeConflictModal();
+          mindarModal.classList.add("hidden");
+        }
+      });
+    });
+  </script>
+</body>
+</html>
